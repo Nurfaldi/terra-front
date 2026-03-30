@@ -1,0 +1,687 @@
+import { useState, useEffect, useMemo } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  ArrowLeft,
+  FileText,
+  Brain,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
+  Eye,
+  ChevronRight,
+  Download,
+  PanelLeft,
+  PanelLeftClose,
+  Save,
+  Check,
+  X,
+  LayoutGrid,
+} from "lucide-react";
+import { PageDetailView } from "@/components/arabic-claims/PageViewer";
+import { AnalysisPanel } from "@/components/arabic-claims/AnalysisPanel";
+import { PDFViewer } from "@/components/arabic-claims/PDFViewer";
+import { useAnalysisDiff } from "@/hooks/useAnalysisDiff";
+import type { AnalysisDiffState } from "@/hooks/useAnalysisDiff";
+import {
+  getArabicClaimFull,
+  getJobStatus,
+  reanalyzeArabicClaim,
+  getPdfUrls,
+} from "@/lib/arabicClaimsApi";
+import { cn } from "@/lib/utils";
+import type {
+  ArabicClaimsData,
+  PageData,
+} from "@/types/arabicClaims";
+
+const getReadabilityColor = (score: number) => {
+  if (score >= 8) return "text-green-700 bg-green-50 border-green-200";
+  if (score >= 5) return "text-amber-700 bg-amber-50 border-amber-200";
+  return "text-red-700 bg-red-50 border-red-200";
+};
+
+const getReadabilityLabel = (score: number) => {
+  if (score >= 9) return "Excellent";
+  if (score >= 8) return "Good";
+  if (score >= 5) return "Review Needed";
+  return "Illegible";
+};
+
+export default function ArabicClaimDetailPage() {
+  const { jobId } = useParams<{ jobId: string }>();
+  const navigate = useNavigate();
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<string | null>(null);
+  const [claimData, setClaimData] = useState<ArabicClaimsData | null>(null);
+  const [selectedPage, setSelectedPage] = useState<number | null>(null);
+  const [isRegeneratingAnalysis, setIsRegeneratingAnalysis] = useState(false);
+  const [editedPageNumbers, setEditedPageNumbers] = useState<number[]>([]);
+  const [isPdfPanelOpen, setIsPdfPanelOpen] = useState(true);
+  const [mergedPdfUrl, setMergedPdfUrl] = useState<string | null>(null);
+
+  // Regenerate modal state
+  const [showRegenerateModal, setShowRegenerateModal] = useState(false);
+  const [additionalInstruction, setAdditionalInstruction] = useState("");
+
+  // Analysis diff state
+  const {
+    userAnalysis,
+    diffState,
+    editedFields,
+    stats,
+    initializeAnalysis,
+    updateField,
+    setLlmSuggestedAnalysis,
+    acceptLlmSuggestion,
+    rejectLlmSuggestion,
+    acceptAllSuggestions,
+    rejectAllSuggestions,
+    saveEdits,
+  } = useAnalysisDiff(null);
+
+  const sortedPages = useMemo(
+    () =>
+      [...(claimData?.pages || [])].sort(
+        (a, b) => a.page_number - b.page_number
+      ),
+    [claimData?.pages]
+  );
+
+  const fetchData = async () => {
+    if (!jobId) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const [statusResp, fullData, pdfResp] = await Promise.all([
+        getJobStatus(jobId),
+        getArabicClaimFull(jobId),
+        getPdfUrls(jobId),
+      ]);
+
+      setJobStatus(statusResp.status);
+      setClaimData(fullData);
+      setEditedPageNumbers([]);
+      setMergedPdfUrl(pdfResp.merged_pdf_url);
+
+      // Initialize analysis diff state
+      initializeAnalysis(fullData.analysis || null);
+
+      if (fullData.pages.length > 0) {
+        const firstPage = [...fullData.pages].sort(
+          (a, b) => a.page_number - b.page_number
+        )[0];
+        setSelectedPage(firstPage.page_number);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to load claim data"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [jobId]);
+
+  const selectedPageData = sortedPages.find(
+    (p) => p.page_number === selectedPage
+  );
+
+  const handlePageDataChange = (
+    pageNumber: number,
+    updates: Partial<PageData>
+  ) => {
+    setClaimData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        pages: prev.pages.map((page) =>
+          page.page_number === pageNumber ? { ...page, ...updates } : page
+        ),
+      };
+    });
+    setEditedPageNumbers((prev) =>
+      prev.includes(pageNumber) ? prev : [...prev, pageNumber]
+    );
+  };
+
+  const handleDownload = () => {
+    if (!claimData) return;
+    const fileName = `${jobId || "arabic-claim"}.json`;
+    const blob = new Blob([JSON.stringify(claimData, null, 2)], {
+      type: "application/json",
+    });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(href);
+  };
+
+  const handleOpenRegenerateModal = () => {
+    setAdditionalInstruction("");
+    setShowRegenerateModal(true);
+  };
+
+  const handleRegenerateAnalysis = async () => {
+    if (!jobId || !claimData || claimData.pages.length === 0) return;
+
+    setShowRegenerateModal(false);
+    setIsRegeneratingAnalysis(true);
+
+    try {
+      const editedSet = new Set(editedPageNumbers);
+      const payloadPages = claimData.pages.map((page) => ({
+        ...page,
+        review_status: editedSet.has(page.page_number)
+          ? "reviewed_by_human"
+          : "llm_extracted_unreviewed",
+      }));
+
+      const editedAnalysisFieldsArray = Array.from(editedFields);
+
+      const response = await reanalyzeArabicClaim(jobId, {
+        pages: payloadPages,
+        edited_page_numbers: Array.from(editedSet).sort((a, b) => a - b),
+        user_edited_fields: editedAnalysisFieldsArray,
+        edited_analysis: userAnalysis ? (userAnalysis as unknown as Record<string, unknown>) : undefined,
+        additional_instruction: additionalInstruction || undefined,
+      });
+
+      // Poll for reanalysis completion
+      const pollReanalysis = async (reanalyzeJobId: string) => {
+        for (let i = 0; i < 60; i++) {
+          await new Promise((r) => setTimeout(r, 3000));
+          const status = await getJobStatus(reanalyzeJobId);
+          if (status.status === "completed") {
+            // Get the new analysis
+            const fullData = await getArabicClaimFull(jobId);
+
+            // Update claim data with new pages
+            setClaimData(fullData);
+            setEditedPageNumbers([]);
+
+            // Set LLM suggestion for diff view (don't auto-apply)
+            setLlmSuggestedAnalysis(fullData.analysis || null);
+
+            return;
+          }
+          if (status.status === "failed") {
+            throw new Error(status.error || "Reanalysis failed");
+          }
+        }
+        throw new Error("Reanalysis timed out");
+      };
+
+      await pollReanalysis(response.job_id);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Unknown error";
+      alert(`Failed to regenerate analysis: ${message}`);
+    } finally {
+      setIsRegeneratingAnalysis(false);
+    }
+  };
+
+  const handleSaveEdits = () => {
+    if (!userAnalysis) return;
+
+    saveEdits();
+
+    // Update claimData with saved analysis
+    setClaimData((prev) => {
+      if (!prev) return prev;
+      return { ...prev, analysis: userAnalysis };
+    });
+  };
+
+  const handleRemoveWarning = (index: number) => {
+    if (!userAnalysis) return;
+    const newWarnings = userAnalysis.risk_flags.filter((_, i) => i !== index);
+    updateField("risk_flags", newWarnings.join("\n"));
+  };
+
+  const handleValidateWarning = (index: number) => {
+    // Mark warning as validated - for now just log it
+    // Could add a validated_flags array to track this
+    console.log("Warning validated:", index);
+  };
+
+  const handleFieldChange = (fieldName: keyof AnalysisDiffState, value: string) => {
+    updateField(fieldName, value);
+  };
+
+  const handleAcceptSuggestion = (fieldName: keyof AnalysisDiffState) => {
+    acceptLlmSuggestion(fieldName);
+  };
+
+  const handleRejectSuggestion = (fieldName: keyof AnalysisDiffState) => {
+    rejectLlmSuggestion(fieldName);
+  };
+
+  const hasEdits = stats.userEditCount > 0 || editedPageNumbers.length > 0;
+  const hasSuggestions = stats.llmSuggestionCount > 0;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-slate-600">Loading claim data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="max-w-md">
+          <CardContent className="pt-6 text-center">
+            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-lg font-semibold mb-2">Error Loading Claim</h2>
+            <p className="text-slate-600 mb-4">{error}</p>
+            <div className="flex gap-2 justify-center">
+              <Button variant="outline" onClick={() => navigate(-1)}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Go Back
+              </Button>
+              <Button onClick={fetchData}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-screen bg-background flex flex-col">
+      {/* Auto-hide Left Sidebar */}
+      <div className="fixed left-0 top-0 h-full z-40 group">
+        {/* Invisible hover trigger area */}
+        <div className="absolute left-0 top-0 h-full w-4 z-10" />
+
+        {/* Sidebar that slides out on hover */}
+        <div className="absolute left-0 top-0 h-full w-16 bg-white border-r border-slate-200 shadow-sm
+                      transform -translate-x-12 group-hover:translate-x-0 transition-transform duration-200 ease-in-out
+                      flex flex-col items-center py-4 gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
+            onClick={() => navigate("/flows")}
+            title="Back to Flows"
+          >
+            <LayoutGrid className="h-5 w-5" />
+          </Button>
+          <div className="w-8 h-px bg-slate-200 my-1" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
+            onClick={() => navigate("/arabic-claims")}
+            title="Arabic Claims List"
+          >
+            <FileText className="h-5 w-5" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Header */}
+      <header className="sticky top-0 z-10 border-b bg-card/80 backdrop-blur-sm">
+        <div className="px-4 lg:px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                onClick={() => navigate("/arabic-claims")}
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                onClick={() => setIsPdfPanelOpen(!isPdfPanelOpen)}
+              >
+                {isPdfPanelOpen ? (
+                  <PanelLeftClose className="h-5 w-5" />
+                ) : (
+                  <PanelLeft className="h-5 w-5" />
+                )}
+              </Button>
+              <div className="p-2 rounded-lg bg-primary/10">
+                <FileText className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-lg font-semibold text-foreground">
+                  Arabic Claim: {jobId?.slice(0, 8)}...
+                </h1>
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge variant="outline">Arabic Claims</Badge>
+                  <Badge
+                    className={
+                      jobStatus === "completed"
+                        ? "bg-green-100 text-green-800"
+                        : jobStatus === "failed"
+                          ? "bg-red-100 text-red-800"
+                          : "bg-yellow-100 text-yellow-800"
+                    }
+                  >
+                    {jobStatus?.toUpperCase()}
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">
+                    {claimData?.total_pages} page
+                    {claimData?.total_pages !== 1 ? "s" : ""}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Save Edits Button */}
+              {hasEdits && (
+                <Button
+                  onClick={handleSaveEdits}
+                  variant="default"
+                  className="gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  Save Edits
+                </Button>
+              )}
+              <Button
+                onClick={handleDownload}
+                variant="outline"
+                className="gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Download JSON
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9"
+                onClick={fetchData}
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* PDF Panel */}
+        <div
+          className={`transition-all duration-300 ease-in-out border-r bg-white ${
+            isPdfPanelOpen ? "w-[45%] lg:w-[40%] xl:w-[35%]" : "w-0"
+          } overflow-hidden flex flex-col min-h-0`}
+        >
+          <div className="flex-1 p-4 min-h-0">
+            <PDFViewer
+              pdfUrl={mergedPdfUrl || undefined}
+              fileName="merged.pdf"
+              currentPage={selectedPage ?? undefined}
+              onPageChange={setSelectedPage}
+            />
+          </div>
+        </div>
+
+        {/* Arabic Claims Content */}
+        <div className="flex-1 min-w-0 min-h-0 overflow-y-auto">
+          <div className="p-4">
+            <Tabs defaultValue="pages" className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="pages" className="gap-2">
+                  <FileText className="h-4 w-4" />
+                  Individual Page Reading ({claimData?.pages.length || 0})
+                </TabsTrigger>
+                <TabsTrigger value="analysis" className="gap-2">
+                  <Brain className="h-4 w-4" />
+                  Claim Review Summary
+                  {hasEdits && (
+                    <Badge variant="secondary" className="ml-1">
+                      {stats.userEditCount + editedPageNumbers.length} edits
+                    </Badge>
+                  )}
+                  {hasSuggestions && (
+                    <Badge variant="outline" className="ml-1 bg-green-50 text-green-700">
+                      {stats.llmSuggestionCount} suggestions
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="pages">
+                <div className="space-y-4">
+                  <Card>
+                    <CardContent className="p-0">
+                      {sortedPages.length > 0 ? (
+                        <div className="divide-y">
+                          {sortedPages.map((page) => (
+                            <button
+                              key={page.page_number}
+                              type="button"
+                              onClick={() =>
+                                setSelectedPage(page.page_number)
+                              }
+                              className={cn(
+                                "w-full px-4 py-3 text-left transition-colors hover:bg-slate-50",
+                                "flex items-center justify-between gap-3",
+                                selectedPage === page.page_number &&
+                                  "bg-blue-50"
+                              )}
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <Eye className="h-4 w-4 text-slate-500 shrink-0" />
+                                <span className="font-medium text-sm shrink-0">
+                                  Page {page.page_number}
+                                </span>
+                                {page.has_ambiguity && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-amber-700 border-amber-300"
+                                  >
+                                    Inferred
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "whitespace-nowrap",
+                                    getReadabilityColor(
+                                      page.readability_score
+                                    )
+                                  )}
+                                >
+                                  {page.readability_score.toFixed(1)}/10 -{" "}
+                                  {getReadabilityLabel(
+                                    page.readability_score
+                                  )}
+                                </Badge>
+                                <ChevronRight className="h-4 w-4 text-slate-400" />
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="px-4 py-8 text-sm text-slate-500">
+                          No pages found.
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <div>
+                    {selectedPageData ? (
+                      <PageDetailView
+                        page={selectedPageData}
+                        onChange={(updates) =>
+                          handlePageDataChange(
+                            selectedPageData.page_number,
+                            updates
+                          )
+                        }
+                      />
+                    ) : (
+                      <Card>
+                        <CardContent className="py-8 text-center text-slate-500">
+                          <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                          {selectedPage ? (
+                            <p>
+                              No OCR detail available for page{" "}
+                              {selectedPage}
+                            </p>
+                          ) : (
+                            <p>Select a page to view details</p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="analysis">
+                <div>
+                  {/* Action Bar */}
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg font-semibold">
+                        Claim Review Summary
+                      </h2>
+                      {hasSuggestions && (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-green-700 border-green-300 hover:bg-green-50"
+                            onClick={acceptAllSuggestions}
+                          >
+                            <Check className="h-3.5 w-3.5 mr-1" />
+                            Accept All
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-red-700 border-red-300 hover:bg-red-50"
+                            onClick={rejectAllSuggestions}
+                          >
+                            <X className="h-3.5 w-3.5 mr-1" />
+                            Reject All
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      onClick={handleOpenRegenerateModal}
+                      disabled={isRegeneratingAnalysis}
+                      className="gap-2"
+                    >
+                      {isRegeneratingAnalysis ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                      {isRegeneratingAnalysis
+                        ? "Regenerating..."
+                        : "Regenerate Analysis"}
+                    </Button>
+                  </div>
+
+                  <AnalysisPanel
+                    analysis={userAnalysis}
+                    diffState={diffState}
+                    onFieldChange={handleFieldChange}
+                    onAcceptSuggestion={handleAcceptSuggestion}
+                    onRejectSuggestion={handleRejectSuggestion}
+                    onRemoveWarning={handleRemoveWarning}
+                    onValidateWarning={handleValidateWarning}
+                  />
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+      </div>
+
+      {/* Regenerate Modal */}
+      <Dialog open={showRegenerateModal} onOpenChange={setShowRegenerateModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Regenerate Analysis</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              The analysis will be regenerated with your edited information preserved.
+              You can add additional instructions below to guide the LLM.
+            </p>
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                Additional Instructions (optional)
+              </label>
+              <Textarea
+                value={additionalInstruction}
+                onChange={(e) => setAdditionalInstruction(e.target.value)}
+                placeholder="e.g., Focus on extracting diagnosis details, prioritize financial information..."
+                className="min-h-[100px]"
+              />
+            </div>
+            {(stats.userEditCount > 0 || editedPageNumbers.length > 0) && (
+              <div className="text-sm text-blue-700 bg-blue-50 p-3 rounded-lg">
+                <strong>{stats.userEditCount + editedPageNumbers.length}</strong> edit(s) will be preserved during regeneration.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRegenerateModal(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRegenerateAnalysis} disabled={isRegeneratingAnalysis}>
+              {isRegeneratingAnalysis ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Regenerating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Start Regeneration
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
