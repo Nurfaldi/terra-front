@@ -35,6 +35,7 @@ interface AnalysisPanelProps {
   onRejectSuggestion?: (fieldName: AnalysisFieldName) => void;
   onRemoveWarning?: (index: number) => void;
   onValidateWarning?: (index: number) => void;
+  readOnly?: boolean;
 }
 
 // Word-level diff renderer
@@ -73,6 +74,7 @@ export function AnalysisPanel({
   onRejectSuggestion,
   onRemoveWarning,
   onValidateWarning,
+  readOnly = false,
 }: AnalysisPanelProps) {
   if (!analysis) {
     return (
@@ -175,8 +177,8 @@ export function AnalysisPanel({
           ) : (
             <>
               <div
-                className="text-sm text-slate-700 leading-relaxed cursor-text hover:bg-slate-50 p-2 rounded -mx-2 min-h-[40px]"
-                onClick={() => onFieldChange && setIsEditing(true)}
+                className={`text-sm text-slate-700 leading-relaxed p-2 rounded -mx-2 min-h-[40px] ${!readOnly && onFieldChange ? "cursor-text hover:bg-slate-50" : ""}`}
+                onClick={() => !readOnly && onFieldChange && setIsEditing(true)}
               >
                 {value ? (
                   hasUserEdits && field ? (
@@ -189,8 +191,8 @@ export function AnalysisPanel({
                 )}
               </div>
 
-              {/* Accept/Reject for AI suggestions */}
-              {hasLlmSuggestion && field?.llmValue && (
+              {/* Accept/Reject for AI suggestions — edit mode only */}
+              {!readOnly && hasLlmSuggestion && field?.llmValue && (
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t">
                   <span className="text-xs text-muted-foreground flex-1">
                     AI suggests changes
@@ -639,7 +641,7 @@ export function AnalysisPanel({
             </div>
           )}
 
-          {hasLlmSuggestion && (
+          {!readOnly && hasLlmSuggestion && (
             <div className="flex items-center gap-2 mt-3 pt-3 border-t">
               <span className="text-xs text-muted-foreground flex-1">
                 AI has updates
@@ -832,32 +834,34 @@ export function AnalysisPanel({
                 >
                   <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-red-500" />
                   <p className="text-sm text-red-700 flex-1">{flag}</p>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    {onValidateWarning && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs text-green-700 hover:bg-green-100"
-                        onClick={() => onValidateWarning(i)}
-                        title="Mark as valid/acknowledged"
-                      >
-                        <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                        Valid
-                      </Button>
-                    )}
-                    {onRemoveWarning && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs text-red-700 hover:bg-red-100"
-                        onClick={() => onRemoveWarning(i)}
-                        title="Dismiss this warning"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 mr-1" />
-                        Delete
-                      </Button>
-                    )}
-                  </div>
+                  {!readOnly && (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {onValidateWarning && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-green-700 hover:bg-green-100"
+                          onClick={() => onValidateWarning(i)}
+                          title="Mark as valid/acknowledged"
+                        >
+                          <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                          Valid
+                        </Button>
+                      )}
+                      {onRemoveWarning && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-red-700 hover:bg-red-100"
+                          onClick={() => onRemoveWarning(i)}
+                          title="Dismiss this warning"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1" />
+                          Delete
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

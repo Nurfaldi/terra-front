@@ -28,10 +28,13 @@ import {
   Check,
   X,
   LayoutGrid,
+  Share2,
 } from "lucide-react";
 import { PageDetailView } from "@/components/arabic-claims/PageViewer";
 import { AnalysisPanel } from "@/components/arabic-claims/AnalysisPanel";
 import { PDFViewer } from "@/components/arabic-claims/PDFViewer";
+import { ShareDialog } from "@/components/arabic-claims/ShareDialog";
+import { useAuth } from "@/context/AuthContext";
 import { useAnalysisDiff } from "@/hooks/useAnalysisDiff";
 import type { AnalysisDiffState } from "@/hooks/useAnalysisDiff";
 import {
@@ -62,6 +65,13 @@ const getReadabilityLabel = (score: number) => {
 export default function ArabicClaimDetailPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const userId = user?.username;
+
+  // Permission & sharing state
+  const [userPermission, setUserPermission] = useState<"owner" | "edit" | "view" | null>(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const canEdit = userPermission === "owner" || userPermission === "edit";
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -109,13 +119,14 @@ export default function ArabicClaimDetailPage() {
 
     try {
       const [statusResp, fullData, pdfResp] = await Promise.all([
-        getJobStatus(jobId),
-        getArabicClaimFull(jobId),
-        getPdfUrls(jobId),
+        getJobStatus(jobId, userId),
+        getArabicClaimFull(jobId, userId),
+        getPdfUrls(jobId, userId),
       ]);
 
       setJobStatus(statusResp.status);
       setClaimData(fullData);
+      setUserPermission(fullData.user_permission ?? null);
       setEditedPageNumbers([]);
       setMergedPdfUrl(pdfResp.merged_pdf_url);
 
@@ -207,16 +218,16 @@ export default function ArabicClaimDetailPage() {
         user_edited_fields: editedAnalysisFieldsArray,
         edited_analysis: userAnalysis ? (userAnalysis as unknown as Record<string, unknown>) : undefined,
         additional_instruction: additionalInstruction || undefined,
-      });
+      }, userId);
 
       // Poll for reanalysis completion
       const pollReanalysis = async (reanalyzeJobId: string) => {
         for (let i = 0; i < 60; i++) {
           await new Promise((r) => setTimeout(r, 3000));
-          const status = await getJobStatus(reanalyzeJobId);
+          const status = await getJobStatus(reanalyzeJobId, userId);
           if (status.status === "completed") {
             // Get the new analysis
-            const fullData = await getArabicClaimFull(jobId);
+            const fullData = await getArabicClaimFull(jobId, userId);
 
             // Update claim data with new pages
             setClaimData(fullData);
@@ -396,6 +407,17 @@ export default function ArabicClaimDetailPage() {
                   >
                     {jobStatus?.toUpperCase()}
                   </Badge>
+                  {userPermission === "view" && (
+                    <Badge className="bg-slate-100 text-slate-600">
+                      <Eye className="h-3 w-3 mr-1" />
+                      View Only
+                    </Badge>
+                  )}
+                  {userPermission === "edit" && (
+                    <Badge className="bg-blue-100 text-blue-700">
+                      Shared (Edit)
+                    </Badge>
+                  )}
                   <span className="text-sm text-muted-foreground">
                     {claimData?.total_pages} page
                     {claimData?.total_pages !== 1 ? "s" : ""}
@@ -404,8 +426,8 @@ export default function ArabicClaimDetailPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {/* Save Edits Button */}
-              {hasEdits && (
+              {/* Save Edits Button — edit/owner only */}
+              {canEdit && hasEdits && (
                 <Button
                   onClick={handleSaveEdits}
                   variant="default"
@@ -413,6 +435,17 @@ export default function ArabicClaimDetailPage() {
                 >
                   <Save className="h-4 w-4" />
                   Save Edits
+                </Button>
+              )}
+              {/* Share Button */}
+              {userPermission && userId && (
+                <Button
+                  onClick={() => setShareDialogOpen(true)}
+                  variant="outline"
+                  className="gap-2"
+                >
+                  <Share2 className="h-4 w-4" />
+                  Share
                 </Button>
               )}
               <Button
@@ -545,12 +578,11 @@ export default function ArabicClaimDetailPage() {
                     {selectedPageData ? (
                       <PageDetailView
                         page={selectedPageData}
-                        onChange={(updates) =>
+                        onChange={canEdit ? (updates) =>
                           handlePageDataChange(
                             selectedPageData.page_number,
                             updates
-                          )
-                        }
+                          ) : undefined}
                       />
                     ) : (
                       <Card>
@@ -579,7 +611,7 @@ export default function ArabicClaimDetailPage() {
                       <h2 className="text-lg font-semibold">
                         Claim Review Summary
                       </h2>
-                      {hasSuggestions && (
+                      {canEdit && hasSuggestions && (
                         <div className="flex items-center gap-2">
                           <Button
                             variant="outline"
@@ -602,20 +634,22 @@ export default function ArabicClaimDetailPage() {
                         </div>
                       )}
                     </div>
-                    <Button
-                      onClick={handleOpenRegenerateModal}
-                      disabled={isRegeneratingAnalysis}
-                      className="gap-2"
-                    >
-                      {isRegeneratingAnalysis ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4" />
-                      )}
-                      {isRegeneratingAnalysis
-                        ? "Regenerating..."
-                        : "Regenerate Analysis"}
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        onClick={handleOpenRegenerateModal}
+                        disabled={isRegeneratingAnalysis}
+                        className="gap-2"
+                      >
+                        {isRegeneratingAnalysis ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4" />
+                        )}
+                        {isRegeneratingAnalysis
+                          ? "Regenerating..."
+                          : "Regenerate Analysis"}
+                      </Button>
+                    )}
                   </div>
 
                   <AnalysisPanel
@@ -626,6 +660,7 @@ export default function ArabicClaimDetailPage() {
                     onRejectSuggestion={handleRejectSuggestion}
                     onRemoveWarning={handleRemoveWarning}
                     onValidateWarning={handleValidateWarning}
+                    readOnly={!canEdit}
                   />
                 </div>
               </TabsContent>
@@ -633,6 +668,17 @@ export default function ArabicClaimDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Share Dialog */}
+      {jobId && userId && userPermission && (
+        <ShareDialog
+          open={shareDialogOpen}
+          onOpenChange={setShareDialogOpen}
+          jobId={jobId}
+          currentUserId={userId}
+          userPermission={userPermission}
+        />
+      )}
 
       {/* Regenerate Modal */}
       <Dialog open={showRegenerateModal} onOpenChange={setShowRegenerateModal}>
