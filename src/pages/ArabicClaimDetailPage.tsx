@@ -31,10 +31,12 @@ import {
   Share2,
   Trash2,
   Undo2,
+  Receipt,
 } from "lucide-react";
 import { PageDetailView } from "@/components/arabic-claims/PageViewer";
 import { PageManagementBar } from "@/components/arabic-claims/PageManagementBar";
 import { AnalysisPanel } from "@/components/arabic-claims/AnalysisPanel";
+import { InvoiceTable } from "@/components/arabic-claims/InvoiceTable";
 import { PDFViewer } from "@/components/arabic-claims/PDFViewer";
 import { ShareDialog } from "@/components/arabic-claims/ShareDialog";
 import { useAuth } from "@/context/AuthContext";
@@ -677,6 +679,12 @@ export default function ArabicClaimDetailPage() {
                     </Badge>
                   )}
                 </TabsTrigger>
+                {(claimData?.invoices?.length ?? 0) > 0 && (
+                  <TabsTrigger value="invoices" className="gap-2">
+                    <Receipt className="h-4 w-4" />
+                    Invoices ({claimData?.invoices?.length || 0})
+                  </TabsTrigger>
+                )}
               </TabsList>
 
               <TabsContent value="pages">
@@ -820,6 +828,9 @@ export default function ArabicClaimDetailPage() {
                     {selectedPageData ? (
                       <PageDetailView
                         page={selectedPageData}
+                        invoice={claimData?.invoices?.find(
+                          (inv) => inv.page_number === selectedPageData.page_number
+                        ) ?? null}
                         onChange={canEdit ? (updates) =>
                           handlePageDataChange(
                             selectedPageData.page_number,
@@ -905,6 +916,10 @@ export default function ArabicClaimDetailPage() {
                     readOnly={!canEdit}
                   />
                 </div>
+              </TabsContent>
+
+              <TabsContent value="invoices">
+                <InvoiceTable invoices={claimData?.invoices ?? []} />
               </TabsContent>
             </Tabs>
           </div>

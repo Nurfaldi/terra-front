@@ -36,7 +36,31 @@ export interface PageData {
   has_ambiguity: boolean;
   key_medical_terms: string[];
   dates_found?: DateFound[];
+  is_invoice?: boolean;
   status?: string;
+}
+
+export interface InvoiceLineItem {
+  row_number: number;
+  description: string;
+  benefit_category?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+  unit_price?: number | null;
+  total_price?: number | null;
+  currency?: string | null;
+}
+
+export interface InvoiceData {
+  page_number: number;
+  provider_name?: string | null;
+  patient_name?: string | null;
+  invoice_number?: string | null;
+  total_charge?: number | null;
+  currency?: string | null;
+  singular_data: Record<string, unknown>;
+  line_items: InvoiceLineItem[];
+  summary?: string;
 }
 
 export interface ChronologicalLogEntry {
@@ -76,6 +100,7 @@ export interface ArabicClaimsData {
   job_id: string;
   total_pages: number;
   pages: PageData[];
+  invoices?: InvoiceData[];
   analysis?: DocumentAnalysis | null;
   raw_concatenated_text?: string;
   claimant_name?: string | null;
