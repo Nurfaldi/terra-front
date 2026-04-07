@@ -10,7 +10,7 @@ import type {
 
 export async function uploadArabicClaim(
   files: File[],
-  claimType: string = "IP",
+  claimType: string = "",
   userId?: string
 ): Promise<SubmitResponse> {
   const formData = new FormData();

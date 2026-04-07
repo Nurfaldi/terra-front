@@ -1,3 +1,22 @@
+export const CASE_TYPES = [
+  "IP", "OP", "PRE_INPATIENT", "POST_INPATIENT",
+  "EMERGENCY", "DENTAL", "MATERNITY", "ACCIDENT", "OTHERS",
+] as const;
+export type CaseType = (typeof CASE_TYPES)[number];
+
+export const CASE_TYPE_LABELS: Record<CaseType | "UNKNOWN", string> = {
+  IP: "Inpatient (IP)",
+  OP: "Outpatient (OP)",
+  PRE_INPATIENT: "Pre-Inpatient",
+  POST_INPATIENT: "Post-Inpatient",
+  EMERGENCY: "Emergency",
+  DENTAL: "Dental",
+  MATERNITY: "Maternity",
+  ACCIDENT: "Accident",
+  OTHERS: "Others",
+  UNKNOWN: "Unknown",
+};
+
 export interface DateFound {
   raw_text: string;
   normalized_iso?: string;
