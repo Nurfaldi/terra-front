@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, Eye, Receipt } from "lucide-react";
+import { formatCurrency, categoryLabel } from "@/lib/invoiceUtils";
 import type { PageData, InvoiceData } from "@/types/arabicClaims";
 
 interface PageViewerProps {
@@ -88,17 +89,6 @@ export function PageViewer({ page, isSelected, onClick }: PageViewerProps) {
       </CardContent>
     </Card>
   );
-}
-
-function formatCurrency(amount: number | null | undefined, currency: string | null | undefined): string {
-  if (amount == null) return "-";
-  const formatted = amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return currency ? `${currency} ${formatted}` : formatted;
-}
-
-function categoryLabel(cat: string | null | undefined): string {
-  if (!cat) return "-";
-  return cat.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 interface PageDetailViewProps {
