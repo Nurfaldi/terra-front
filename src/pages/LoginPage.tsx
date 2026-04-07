@@ -18,12 +18,12 @@ export default function LoginPage() {
         setIsLoading(true);
 
         // Hardcoded login for demo purposes
-        if (username === "rey_user1" && password === "2345") {
-            // Simulating token
+        const validUsers = ["rey_user1", "rey_user2", "rey_user3"];
+        if (validUsers.includes(username) && password === "2345") {
             login(username, "mock-token-" + Date.now());
             navigate("/flows");
         } else {
-            setError("Invalid credentials (try: rey_user1 / 2345)");
+            setError("Invalid credentials (try: rey_user1 / rey_user2 / rey_user3 — password: 2345)");
             setIsLoading(false);
         }
     };

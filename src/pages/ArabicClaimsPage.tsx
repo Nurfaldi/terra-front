@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Upload, Clock, ChevronRight,
   Search, Receipt, Globe, LogOut, Activity, Trash2, Download,
-  Loader2, RotateCcw, LayoutGrid, FileText
+  Loader2, RotateCcw, LayoutGrid, FileText, Share2, Users, Eye, Pencil,
 } from "lucide-react";
 
 import { useAuth } from "@/context/AuthContext";
@@ -17,6 +17,7 @@ import {
   deleteArabicClaim,
 } from "@/lib/arabicClaimsApi";
 import type { ArabicClaimsJobSummary } from "@/types/arabicClaims";
+import { ShareDialog } from "@/components/arabic-claims/ShareDialog";
 import { cn } from "@/lib/utils";
 
 // Type filter options
@@ -69,10 +70,11 @@ interface ClaimCardProps {
   formatDate: (date: string) => string;
   onClick: () => void;
   onDelete: () => void;
+  onShare: () => void;
   isDeleting: boolean;
 }
 
-const ClaimCard = ({ job, formatDate, onClick, onDelete, isDeleting }: ClaimCardProps) => {
+const ClaimCard = ({ job, formatDate, onClick, onDelete, onShare, isDeleting }: ClaimCardProps) => {
   const caseCategory = job.input_data?.category || "CLAIMS";
   const isClaims = caseCategory === "CLAIMS" || caseCategory === "claims";
 
@@ -149,6 +151,26 @@ const ClaimCard = ({ job, formatDate, onClick, onDelete, isDeleting }: ClaimCard
                 <span className="px-2 py-0.5 bg-teal-50 text-teal-600 rounded text-xs border border-teal-200">
                   {job.pipeline}
                 </span>
+
+                {/* Sharing badges */}
+                {job.shared_by && (
+                  <span className="px-2 py-0.5 bg-violet-50 text-violet-600 rounded text-xs border border-violet-200 flex items-center gap-1">
+                    <Users className="h-3 w-3" />
+                    Shared by {job.shared_by}
+                  </span>
+                )}
+                {job.permission === "view" && job.shared_by && (
+                  <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-xs flex items-center gap-1">
+                    <Eye className="h-3 w-3" />
+                    View only
+                  </span>
+                )}
+                {job.permission === "edit" && job.shared_by && (
+                  <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs border border-blue-200 flex items-center gap-1">
+                    <Pencil className="h-3 w-3" />
+                    Can edit
+                  </span>
+                )}
               </div>
             </div>
 
@@ -177,23 +199,39 @@ const ClaimCard = ({ job, formatDate, onClick, onDelete, isDeleting }: ClaimCard
                 </Button>
               )}
 
-              {/* Delete Button */}
+              {/* Share Button — visible to anyone with access */}
               <Button
                 variant="ghost"
                 size="icon"
-                disabled={isDeleting}
-                className="text-slate-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDelete();
+                  onShare();
                 }}
+                title="Share"
               >
-                {isDeleting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
-                )}
+                <Share2 className="h-4 w-4" />
               </Button>
+
+              {/* Delete Button — only for owners */}
+              {(!job.permission || job.permission === "owner") && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={isDeleting}
+                  className="text-slate-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }}
+                >
+                  {isDeleting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
             </div>
 
             {/* Arrow */}
@@ -211,7 +249,13 @@ const ClaimCard = ({ job, formatDate, onClick, onDelete, isDeleting }: ClaimCard
 export default function ArabicClaimsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
+  const userId = user?.username;
+
+  // Share dialog state
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareJobId, setShareJobId] = useState<string | null>(null);
+  const [shareJobPermission, setShareJobPermission] = useState<"owner" | "edit" | "view">("owner");
 
   // Upload state
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -229,14 +273,14 @@ export default function ArabicClaimsPage() {
 
   // Jobs Query with polling
   const jobsQuery = useQuery({
-    queryKey: ["arabic-claims-jobs"],
-    queryFn: () => listArabicClaimsJobs(),
+    queryKey: ["arabic-claims-jobs", userId],
+    queryFn: () => listArabicClaimsJobs(undefined, userId),
     refetchInterval: 5000,
   });
 
   // Upload Mutation
   const uploadMutation = useMutation({
-    mutationFn: () => uploadArabicClaim(selectedFiles, claimType),
+    mutationFn: () => uploadArabicClaim(selectedFiles, claimType, userId),
     onSuccess: () => {
       setSelectedFiles([]);
       void queryClient.invalidateQueries({
@@ -249,7 +293,7 @@ export default function ArabicClaimsPage() {
   const deleteMutation = useMutation({
     mutationFn: async (jobId: string) => {
       console.log("Deleting job:", jobId);
-      const result = await deleteArabicClaim(jobId);
+      const result = await deleteArabicClaim(jobId, userId);
       console.log("Delete result:", result);
       return result;
     },
@@ -314,6 +358,12 @@ export default function ArabicClaimsPage() {
       alert(`Failed to upload: ${message}`);
     }
   };
+
+  const handleShare = useCallback((job: ArabicClaimsJobSummary) => {
+    setShareJobId(job.job_id);
+    setShareJobPermission((job.permission as "owner" | "edit" | "view") || "owner");
+    setShareDialogOpen(true);
+  }, []);
 
   const handleDelete = useCallback((jobId: string) => {
     if (confirm("Are you sure you want to delete this job?")) {
@@ -743,6 +793,7 @@ export default function ArabicClaimsPage() {
                   formatDate={formatDate}
                   onClick={() => navigate(`/arabic-claims/${encodeURIComponent(job.job_id)}`)}
                   onDelete={() => handleDelete(job.job_id)}
+                  onShare={() => handleShare(job)}
                   isDeleting={deletingId === job.job_id}
                 />
               ))}
@@ -750,6 +801,17 @@ export default function ArabicClaimsPage() {
           </div>
         </div>
       </div>
+
+      {/* Share Dialog */}
+      {shareJobId && userId && (
+        <ShareDialog
+          open={shareDialogOpen}
+          onOpenChange={setShareDialogOpen}
+          jobId={shareJobId}
+          currentUserId={userId}
+          userPermission={shareJobPermission}
+        />
+      )}
 
       {/* Hidden File Inputs */}
       <input

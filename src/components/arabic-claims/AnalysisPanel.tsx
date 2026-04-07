@@ -35,28 +35,30 @@ interface AnalysisPanelProps {
   onRejectSuggestion?: (fieldName: AnalysisFieldName) => void;
   onRemoveWarning?: (index: number) => void;
   onValidateWarning?: (index: number) => void;
+  readOnly?: boolean;
 }
 
 // Word-level diff renderer
-function renderWordDiff(original: string, edited: string, isUserEdit: boolean) {
-  if (!isUserEdit) {
-    return <span>{edited}</span>;
-  }
-
+function renderWordDiff(original: string, edited: string, mode: "user" | "llm") {
   const changes = diffWords(original, edited);
 
   return (
     <>
       {changes.map((change, idx) => {
         if (change.added) {
-          return (
-            <span key={idx} className="bg-blue-100 text-blue-900 border-b-2 border-blue-500 px-0.5">
-              {change.value}
-            </span>
-          );
+          const cls = mode === "user"
+            ? "bg-blue-100 text-blue-900 border-b-2 border-blue-500 px-0.5"
+            : "bg-green-100 text-green-900 border-b-2 border-green-500 px-0.5";
+          return <span key={idx} className={cls}>{change.value}</span>;
         }
         if (change.removed) {
-          // Don't show removed text for user edits - they replaced it
+          if (mode === "llm") {
+            return (
+              <span key={idx} className="bg-red-50 text-red-500 line-through px-0.5">
+                {change.value}
+              </span>
+            );
+          }
           return null;
         }
         return <span key={idx}>{change.value}</span>;
@@ -73,6 +75,7 @@ export function AnalysisPanel({
   onRejectSuggestion,
   onRemoveWarning,
   onValidateWarning,
+  readOnly = false,
 }: AnalysisPanelProps) {
   if (!analysis) {
     return (
@@ -175,12 +178,14 @@ export function AnalysisPanel({
           ) : (
             <>
               <div
-                className="text-sm text-slate-700 leading-relaxed cursor-text hover:bg-slate-50 p-2 rounded -mx-2 min-h-[40px]"
-                onClick={() => onFieldChange && setIsEditing(true)}
+                className={`text-sm text-slate-700 leading-relaxed p-2 rounded -mx-2 min-h-[40px] ${!readOnly && onFieldChange ? "cursor-text hover:bg-slate-50" : ""}`}
+                onClick={() => !readOnly && onFieldChange && setIsEditing(true)}
               >
                 {value ? (
-                  hasUserEdits && field ? (
-                    renderWordDiff(field.originalValue, value, true)
+                  hasLlmSuggestion && field?.llmValue ? (
+                    renderWordDiff(value, field.llmValue, "llm")
+                  ) : hasUserEdits && field ? (
+                    renderWordDiff(field.originalValue, value, "user")
                   ) : (
                     value
                   )
@@ -189,8 +194,8 @@ export function AnalysisPanel({
                 )}
               </div>
 
-              {/* Accept/Reject for AI suggestions */}
-              {hasLlmSuggestion && field?.llmValue && (
+              {/* Accept/Reject for AI suggestions — edit mode only */}
+              {!readOnly && hasLlmSuggestion && field?.llmValue && (
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t">
                   <span className="text-xs text-muted-foreground flex-1">
                     AI suggests changes
@@ -285,6 +290,9 @@ export function AnalysisPanel({
     const hasUserEdits = field?.hasUserEdits || false;
     const hasLlmSuggestion = field?.hasLlmSuggestion || false;
     const originalItems = field?.originalValue?.split("\n").filter(Boolean) || [];
+    const llmItems = hasLlmSuggestion && field?.llmValue
+      ? field.llmValue.split("\n").filter(Boolean)
+      : [];
 
     return (
       <Card>
@@ -308,6 +316,7 @@ export function AnalysisPanel({
           <div className="space-y-2">
             {items.map((item, i) => {
               const isUserAdded = hasUserEdits && !originalItems.includes(item);
+              const isLlmRemoved = hasLlmSuggestion && llmItems.length > 0 && !llmItems.includes(item);
 
               if (editingIndex === i) {
                 return (
@@ -336,7 +345,11 @@ export function AnalysisPanel({
                 <div key={i} className="group flex items-center gap-2">
                   <span
                     className={`flex-1 text-sm px-2 py-1 rounded cursor-text hover:bg-slate-100 ${
-                      isUserAdded ? "bg-blue-100 text-blue-900 border-l-4 border-blue-500" : "bg-slate-50"
+                      isLlmRemoved
+                        ? "bg-red-50 text-red-500 line-through border-l-4 border-red-400"
+                        : isUserAdded
+                          ? "bg-blue-100 text-blue-900 border-l-4 border-blue-500"
+                          : "bg-slate-50"
                     }`}
                     onClick={() => onFieldChange && handleEditStart(i)}
                   >
@@ -378,12 +391,10 @@ export function AnalysisPanel({
               </div>
             )}
 
-            {/* AI suggested additions */}
-            {hasLlmSuggestion && field?.llmValue && (
+            {/* AI suggested additions (items in LLM but not in current) */}
+            {hasLlmSuggestion && llmItems.length > 0 && (
               <>
-                {field.llmValue
-                  .split("\n")
-                  .filter(Boolean)
+                {llmItems
                   .filter((item) => !items.includes(item))
                   .map((item, i) => (
                     <div key={`llm-${i}`} className="flex items-center gap-2">
@@ -580,24 +591,26 @@ export function AnalysisPanel({
                 return (
                   <div key={i} className="group flex items-start gap-2">
                     <div
-                      className={`flex-1 text-sm p-2 rounded cursor-text hover:bg-slate-50 ${
-                        edited ? "bg-blue-50 border-l-4 border-blue-500" : ""
-                      }`}
-                      onClick={() => onFieldChange && handleEditStart(i)}
+                      className={`flex-1 text-sm p-2 rounded ${
+                        !readOnly && onFieldChange ? "cursor-text hover:bg-slate-50" : ""
+                      } ${edited ? "bg-blue-50 border-l-4 border-blue-500" : ""}`}
+                      onClick={() => !readOnly && onFieldChange && handleEditStart(i)}
                     >
                       {dateStr && <span className={`font-medium ${edited ? "text-blue-900" : ""}`}>{dateStr}: </span>}
                       <span className={edited ? "text-blue-900" : ""}>{eventText}</span>
                       {pageStr && <span className="text-slate-400">{pageStr}</span>}
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 mt-1"
-                      onClick={() => handleRemove(i)}
-                      title="Remove event"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    {!readOnly && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 mt-1"
+                        onClick={() => handleRemove(i)}
+                        title="Remove event"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                   </div>
                 );
               })}
@@ -631,7 +644,7 @@ export function AnalysisPanel({
                 </div>
               )}
 
-              {onFieldChange && !isAddingNew && (
+              {!readOnly && onFieldChange && !isAddingNew && (
                 <Button size="sm" variant="ghost" className="text-blue-600 hover:text-blue-700" onClick={() => setIsAddingNew(true)}>
                   + Add event
                 </Button>
@@ -639,7 +652,7 @@ export function AnalysisPanel({
             </div>
           )}
 
-          {hasLlmSuggestion && (
+          {!readOnly && hasLlmSuggestion && (
             <div className="flex items-center gap-2 mt-3 pt-3 border-t">
               <span className="text-xs text-muted-foreground flex-1">
                 AI has updates
@@ -832,32 +845,34 @@ export function AnalysisPanel({
                 >
                   <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-red-500" />
                   <p className="text-sm text-red-700 flex-1">{flag}</p>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    {onValidateWarning && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs text-green-700 hover:bg-green-100"
-                        onClick={() => onValidateWarning(i)}
-                        title="Mark as valid/acknowledged"
-                      >
-                        <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                        Valid
-                      </Button>
-                    )}
-                    {onRemoveWarning && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs text-red-700 hover:bg-red-100"
-                        onClick={() => onRemoveWarning(i)}
-                        title="Dismiss this warning"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 mr-1" />
-                        Delete
-                      </Button>
-                    )}
-                  </div>
+                  {!readOnly && (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {onValidateWarning && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-green-700 hover:bg-green-100"
+                          onClick={() => onValidateWarning(i)}
+                          title="Mark as valid/acknowledged"
+                        >
+                          <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                          Valid
+                        </Button>
+                      )}
+                      {onRemoveWarning && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-red-700 hover:bg-red-100"
+                          onClick={() => onRemoveWarning(i)}
+                          title="Dismiss this warning"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1" />
+                          Delete
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

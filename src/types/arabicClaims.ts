@@ -61,6 +61,11 @@ export interface ArabicClaimsData {
   raw_concatenated_text?: string;
   claimant_name?: string | null;
   category?: string;
+  removed_page_numbers?: number[];
+  suggested_analysis?: DocumentAnalysis | null;
+  suggestion_job_id?: string | null;
+  user_permission?: "owner" | "edit" | "view" | null;
+  link_sharing?: "off" | "view" | "edit";
 }
 
 export interface ArabicClaimsJobSummary {
@@ -78,6 +83,19 @@ export interface ArabicClaimsJobSummary {
   created_at?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
+  // Sharing fields
+  user_id?: string | null;
+  shared_by?: string | null;
+  permission?: "owner" | "edit" | "view" | null;
+  link_sharing?: "off" | "view" | "edit";
+}
+
+export interface ShareResponse {
+  id: string;
+  job_id: string;
+  owner_user_id: string;
+  shared_with_user_id: string;
+  permission: "view" | "edit";
 }
 
 export interface SubmitResponse {
