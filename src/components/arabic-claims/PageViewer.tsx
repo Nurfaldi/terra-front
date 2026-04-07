@@ -1,7 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, Eye } from "lucide-react";
-import type { PageData } from "@/types/arabicClaims";
+import { AlertCircle, Eye, Receipt } from "lucide-react";
+import { formatCurrency, categoryLabel } from "@/lib/invoiceUtils";
+import type { PageData, InvoiceData } from "@/types/arabicClaims";
 
 interface PageViewerProps {
   page: PageData;
@@ -37,6 +38,12 @@ export function PageViewer({ page, isSelected, onClick }: PageViewerProps) {
             Page {page.page_number}
           </CardTitle>
           <div className="flex items-center gap-2">
+            {page.is_invoice && (
+              <Badge variant="outline" className="text-blue-600 border-blue-300 bg-blue-50">
+                <Receipt className="h-3 w-3 mr-1" />
+                Invoice
+              </Badge>
+            )}
             {page.has_ambiguity && (
               <Badge variant="outline" className="text-amber-600 border-amber-300">
                 <AlertCircle className="h-3 w-3 mr-1" />
@@ -86,10 +93,11 @@ export function PageViewer({ page, isSelected, onClick }: PageViewerProps) {
 
 interface PageDetailViewProps {
   page: PageData;
+  invoice?: InvoiceData | null;
   onChange?: (updates: Partial<PageData>) => void;
 }
 
-export function PageDetailView({ page, onChange }: PageDetailViewProps) {
+export function PageDetailView({ page, invoice, onChange }: PageDetailViewProps) {
   const updateField = (updates: Partial<PageData>) => {
     onChange?.(updates);
   };
@@ -209,6 +217,89 @@ export function PageDetailView({ page, onChange }: PageDetailViewProps) {
           </button>
         </CardContent>
       </Card>
+
+      {/* Invoice Extraction */}
+      {invoice && (
+        <Card className="border-blue-200">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm text-blue-700 flex items-center gap-2">
+                <Receipt className="h-4 w-4" />
+                Invoice Extraction
+                {invoice.invoice_number && (
+                  <span className="font-normal text-muted-foreground">
+                    #{invoice.invoice_number}
+                  </span>
+                )}
+              </CardTitle>
+              {invoice.total_charge != null && (
+                <Badge variant="secondary" className="font-mono">
+                  {formatCurrency(invoice.total_charge, invoice.currency)}
+                </Badge>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground mt-1">
+              {invoice.provider_name && <span>Provider: <span className="text-foreground">{invoice.provider_name}</span></span>}
+              {invoice.patient_name && <span>Patient: <span className="text-foreground">{invoice.patient_name}</span></span>}
+              {invoice.singular_data?.practitioner != null && (
+                <span>Doctor: <span className="text-foreground">{`${invoice.singular_data.practitioner}`}</span></span>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {invoice.line_items.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-muted text-muted-foreground">
+                    <tr>
+                      <th className="px-2 py-1.5 font-medium w-8">#</th>
+                      <th className="px-2 py-1.5 font-medium">Description</th>
+                      <th className="px-2 py-1.5 font-medium">Category</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Qty</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Unit Price</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {invoice.line_items.map((item, i) => (
+                      <tr key={i} className="hover:bg-muted/50">
+                        <td className="px-2 py-1.5 text-muted-foreground">{item.row_number}</td>
+                        <td className="px-2 py-1.5 max-w-[250px]">{item.description || "-"}</td>
+                        <td className="px-2 py-1.5">
+                          {item.benefit_category ? (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0">
+                              {categoryLabel(item.benefit_category)}
+                            </Badge>
+                          ) : "-"}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-mono">{item.quantity ?? "-"}</td>
+                        <td className="px-2 py-1.5 text-right font-mono">
+                          {formatCurrency(item.unit_price, item.currency ?? invoice.currency)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-mono font-medium">
+                          {formatCurrency(item.total_price, item.currency ?? invoice.currency)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {invoice.total_charge != null && (
+                    <tfoot className="bg-muted/50 font-medium text-xs">
+                      <tr>
+                        <td colSpan={5} className="px-2 py-1.5 text-right">Total</td>
+                        <td className="px-2 py-1.5 text-right font-mono">
+                          {formatCurrency(invoice.total_charge, invoice.currency)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No line items extracted.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
