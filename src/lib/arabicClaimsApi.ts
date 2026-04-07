@@ -139,6 +139,34 @@ export async function deleteArabicClaim(
   );
 }
 
+// -- Suggestion Accept/Reject API ---------------------------------------------
+
+export async function acceptSuggestion(
+  jobId: string,
+  userId?: string
+): Promise<void> {
+  const params = new URLSearchParams();
+  if (userId) params.append("user_id", userId);
+  const qs = params.toString();
+  return apiRequest<void>(
+    `/arabic-claims/${encodeURIComponent(jobId)}/accept-suggestion${qs ? `?${qs}` : ""}`,
+    { method: "POST" }
+  );
+}
+
+export async function rejectSuggestion(
+  jobId: string,
+  userId?: string
+): Promise<void> {
+  const params = new URLSearchParams();
+  if (userId) params.append("user_id", userId);
+  const qs = params.toString();
+  return apiRequest<void>(
+    `/arabic-claims/${encodeURIComponent(jobId)}/reject-suggestion${qs ? `?${qs}` : ""}`,
+    { method: "POST" }
+  );
+}
+
 // -- User Search API ----------------------------------------------------------
 
 export async function searchUsers(
@@ -246,6 +274,78 @@ export async function updateLinkSharing(
     {
       method: "PATCH",
       body: JSON.stringify({ link_sharing: linkSharing }),
+    }
+  );
+}
+
+// -- Page Management API ------------------------------------------------------
+
+export interface PageStatusResponse {
+  total: number;
+  pending: number;
+  extracted: number;
+  failed: number;
+}
+
+export async function addPages(
+  jobId: string,
+  files: File[],
+  userId?: string
+): Promise<SubmitResponse> {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+
+  const params = new URLSearchParams();
+  if (userId) params.append("user_id", userId);
+  const qs = params.toString();
+  return apiRequest<SubmitResponse>(
+    `/arabic-claims/${encodeURIComponent(jobId)}/pages${qs ? `?${qs}` : ""}`,
+    {
+      method: "POST",
+      body: formData,
+    }
+  );
+}
+
+export async function getPageStatus(
+  jobId: string,
+  userId?: string
+): Promise<PageStatusResponse> {
+  const params = new URLSearchParams();
+  if (userId) params.append("user_id", userId);
+  const qs = params.toString();
+  return apiRequest<PageStatusResponse>(
+    `/arabic-claims/${encodeURIComponent(jobId)}/pages/status${qs ? `?${qs}` : ""}`,
+    { method: "GET" }
+  );
+}
+
+export interface ReprocessResponse {
+  job_id: string;
+  status: string;
+  pending_pages: number;
+}
+
+export async function reprocessClaim(
+  jobId: string,
+  payload?: {
+    pages?: (PageData & { review_status?: string })[];
+    edited_page_numbers?: number[];
+    user_edited_fields?: string[];
+    edited_analysis?: Record<string, unknown>;
+    removed_page_numbers?: number[];
+    additional_instruction?: string;
+  },
+  userId?: string
+): Promise<ReprocessResponse> {
+  const params = new URLSearchParams();
+  if (userId) params.append("user_id", userId);
+  const qs = params.toString();
+  return apiRequest<ReprocessResponse>(
+    `/arabic-claims/${encodeURIComponent(jobId)}/reprocess${qs ? `?${qs}` : ""}`,
+    {
+      method: "POST",
+      body: payload ? JSON.stringify(payload) : undefined,
     }
   );
 }

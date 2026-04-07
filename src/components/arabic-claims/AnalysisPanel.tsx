@@ -39,25 +39,26 @@ interface AnalysisPanelProps {
 }
 
 // Word-level diff renderer
-function renderWordDiff(original: string, edited: string, isUserEdit: boolean) {
-  if (!isUserEdit) {
-    return <span>{edited}</span>;
-  }
-
+function renderWordDiff(original: string, edited: string, mode: "user" | "llm") {
   const changes = diffWords(original, edited);
 
   return (
     <>
       {changes.map((change, idx) => {
         if (change.added) {
-          return (
-            <span key={idx} className="bg-blue-100 text-blue-900 border-b-2 border-blue-500 px-0.5">
-              {change.value}
-            </span>
-          );
+          const cls = mode === "user"
+            ? "bg-blue-100 text-blue-900 border-b-2 border-blue-500 px-0.5"
+            : "bg-green-100 text-green-900 border-b-2 border-green-500 px-0.5";
+          return <span key={idx} className={cls}>{change.value}</span>;
         }
         if (change.removed) {
-          // Don't show removed text for user edits - they replaced it
+          if (mode === "llm") {
+            return (
+              <span key={idx} className="bg-red-50 text-red-500 line-through px-0.5">
+                {change.value}
+              </span>
+            );
+          }
           return null;
         }
         return <span key={idx}>{change.value}</span>;
@@ -181,8 +182,10 @@ export function AnalysisPanel({
                 onClick={() => !readOnly && onFieldChange && setIsEditing(true)}
               >
                 {value ? (
-                  hasUserEdits && field ? (
-                    renderWordDiff(field.originalValue, value, true)
+                  hasLlmSuggestion && field?.llmValue ? (
+                    renderWordDiff(value, field.llmValue, "llm")
+                  ) : hasUserEdits && field ? (
+                    renderWordDiff(field.originalValue, value, "user")
                   ) : (
                     value
                   )
@@ -287,6 +290,9 @@ export function AnalysisPanel({
     const hasUserEdits = field?.hasUserEdits || false;
     const hasLlmSuggestion = field?.hasLlmSuggestion || false;
     const originalItems = field?.originalValue?.split("\n").filter(Boolean) || [];
+    const llmItems = hasLlmSuggestion && field?.llmValue
+      ? field.llmValue.split("\n").filter(Boolean)
+      : [];
 
     return (
       <Card>
@@ -310,6 +316,7 @@ export function AnalysisPanel({
           <div className="space-y-2">
             {items.map((item, i) => {
               const isUserAdded = hasUserEdits && !originalItems.includes(item);
+              const isLlmRemoved = hasLlmSuggestion && llmItems.length > 0 && !llmItems.includes(item);
 
               if (editingIndex === i) {
                 return (
@@ -338,7 +345,11 @@ export function AnalysisPanel({
                 <div key={i} className="group flex items-center gap-2">
                   <span
                     className={`flex-1 text-sm px-2 py-1 rounded cursor-text hover:bg-slate-100 ${
-                      isUserAdded ? "bg-blue-100 text-blue-900 border-l-4 border-blue-500" : "bg-slate-50"
+                      isLlmRemoved
+                        ? "bg-red-50 text-red-500 line-through border-l-4 border-red-400"
+                        : isUserAdded
+                          ? "bg-blue-100 text-blue-900 border-l-4 border-blue-500"
+                          : "bg-slate-50"
                     }`}
                     onClick={() => onFieldChange && handleEditStart(i)}
                   >
@@ -380,12 +391,10 @@ export function AnalysisPanel({
               </div>
             )}
 
-            {/* AI suggested additions */}
-            {hasLlmSuggestion && field?.llmValue && (
+            {/* AI suggested additions (items in LLM but not in current) */}
+            {hasLlmSuggestion && llmItems.length > 0 && (
               <>
-                {field.llmValue
-                  .split("\n")
-                  .filter(Boolean)
+                {llmItems
                   .filter((item) => !items.includes(item))
                   .map((item, i) => (
                     <div key={`llm-${i}`} className="flex items-center gap-2">

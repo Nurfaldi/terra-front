@@ -61,6 +61,9 @@ export interface ArabicClaimsData {
   raw_concatenated_text?: string;
   claimant_name?: string | null;
   category?: string;
+  removed_page_numbers?: number[];
+  suggested_analysis?: DocumentAnalysis | null;
+  suggestion_job_id?: string | null;
   user_permission?: "owner" | "edit" | "view" | null;
   link_sharing?: "off" | "view" | "edit";
 }

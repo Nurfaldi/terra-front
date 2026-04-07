@@ -29,8 +29,11 @@ import {
   X,
   LayoutGrid,
   Share2,
+  Trash2,
+  Undo2,
 } from "lucide-react";
 import { PageDetailView } from "@/components/arabic-claims/PageViewer";
+import { PageManagementBar } from "@/components/arabic-claims/PageManagementBar";
 import { AnalysisPanel } from "@/components/arabic-claims/AnalysisPanel";
 import { PDFViewer } from "@/components/arabic-claims/PDFViewer";
 import { ShareDialog } from "@/components/arabic-claims/ShareDialog";
@@ -42,6 +45,10 @@ import {
   getJobStatus,
   reanalyzeArabicClaim,
   getPdfUrls,
+  getPageStatus,
+  reprocessClaim,
+  acceptSuggestion,
+  rejectSuggestion,
 } from "@/lib/arabicClaimsApi";
 import { cn } from "@/lib/utils";
 import type {
@@ -82,6 +89,16 @@ export default function ArabicClaimDetailPage() {
   const [editedPageNumbers, setEditedPageNumbers] = useState<number[]>([]);
   const [isPdfPanelOpen, setIsPdfPanelOpen] = useState(true);
   const [mergedPdfUrl, setMergedPdfUrl] = useState<string | null>(null);
+  const [pagePdfUrls, setPagePdfUrls] = useState<Record<number, string>>({});
+
+  // Page management state
+  const [removedPageNumbers, setRemovedPageNumbers] = useState<number[]>([]);
+  const [hasPendingPageChanges, setHasPendingPageChanges] = useState(false);
+  const [isReprocessing, setIsReprocessing] = useState(false);
+  const [extractionStatus, setExtractionStatus] = useState<{
+    pending: number;
+    total: number;
+  } | null>(null);
 
   // Regenerate modal state
   const [showRegenerateModal, setShowRegenerateModal] = useState(false);
@@ -128,10 +145,18 @@ export default function ArabicClaimDetailPage() {
       setClaimData(fullData);
       setUserPermission(fullData.user_permission ?? null);
       setEditedPageNumbers([]);
+      setRemovedPageNumbers(fullData.removed_page_numbers ?? []);
+      setHasPendingPageChanges(false);
       setMergedPdfUrl(pdfResp.merged_pdf_url);
+      setPagePdfUrls(pdfResp.page_pdf_urls || {});
 
       // Initialize analysis diff state
       initializeAnalysis(fullData.analysis || null);
+
+      // Restore pending suggestion from DB (survives refresh)
+      if (fullData.suggested_analysis) {
+        setLlmSuggestedAnalysis(fullData.suggested_analysis);
+      }
 
       if (fullData.pages.length > 0) {
         const firstPage = [...fullData.pages].sort(
@@ -151,6 +176,31 @@ export default function ArabicClaimDetailPage() {
   useEffect(() => {
     fetchData();
   }, [jobId]);
+
+  // Poll extraction status when pages are being extracted
+  useEffect(() => {
+    if (!extractionStatus || extractionStatus.pending === 0 || !jobId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const status = await getPageStatus(jobId, userId);
+        setExtractionStatus({
+          pending: status.pending,
+          total: status.total,
+        });
+
+        if (status.pending === 0) {
+          // Extraction done — refresh pages
+          const fullData = await getArabicClaimFull(jobId, userId);
+          setClaimData(fullData);
+        }
+      } catch {
+        // Ignore polling errors
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [extractionStatus, jobId, userId]);
 
   const selectedPageData = sortedPages.find(
     (p) => p.page_number === selectedPage
@@ -172,6 +222,117 @@ export default function ArabicClaimDetailPage() {
     setEditedPageNumbers((prev) =>
       prev.includes(pageNumber) ? prev : [...prev, pageNumber]
     );
+  };
+
+  // -- Page management handlers --
+
+  const handleRemovePage = (pageNumber: number) => {
+    setRemovedPageNumbers((prev) => [...prev, pageNumber]);
+    setHasPendingPageChanges(true);
+    // If removed the currently selected page, select next available
+    if (selectedPage === pageNumber) {
+      const remaining = sortedPages.filter(
+        (p) => p.page_number !== pageNumber && !removedPageNumbers.includes(p.page_number)
+      );
+      setSelectedPage(remaining.length > 0 ? remaining[0].page_number : null);
+    }
+  };
+
+  const handleRestorePage = (pageNumber: number) => {
+    setRemovedPageNumbers((prev) => prev.filter((n) => n !== pageNumber));
+    // If no more changes (removed list empty and no new pages added), clear flag
+    // Keep hasPendingPageChanges true if there were added pages
+  };
+
+  const handleUndoAllRemovals = () => {
+    setRemovedPageNumbers([]);
+  };
+
+  const handlePagesAdded = async () => {
+    if (!jobId) return;
+    setHasPendingPageChanges(true);
+    try {
+      const status = await getPageStatus(jobId, userId);
+      setExtractionStatus({ pending: status.pending, total: status.total });
+      // Refresh pages to show new pending ones
+      const fullData = await getArabicClaimFull(jobId, userId);
+      setClaimData(fullData);
+    } catch (error) {
+      console.error("Failed to refresh after adding pages:", error);
+    }
+  };
+
+  const handleReprocess = async () => {
+    if (!jobId || !claimData) return;
+    setIsReprocessing(true);
+
+    try {
+      const editedSet = new Set(editedPageNumbers);
+      const response = await reprocessClaim(
+        jobId,
+        {
+          pages: claimData.pages
+            .filter((p) => !removedPageNumbers.includes(p.page_number))
+            .map((page) => ({
+              ...page,
+              review_status: editedSet.has(page.page_number)
+                ? "reviewed_by_human"
+                : "llm_extracted_unreviewed",
+            })),
+          edited_page_numbers: Array.from(editedSet).sort((a, b) => a - b),
+          user_edited_fields: Array.from(editedFields),
+          edited_analysis: userAnalysis
+            ? (userAnalysis as unknown as Record<string, unknown>)
+            : undefined,
+          removed_page_numbers: removedPageNumbers,
+          additional_instruction: additionalInstruction || undefined,
+        },
+        userId
+      );
+
+      // Poll for completion
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const status = await getJobStatus(response.job_id, userId);
+        if (status.status === "completed") {
+          // Suggestion is stored in DB — just reload everything
+          setExtractionStatus(null);
+          await fetchData();
+          return;
+        }
+        if (status.status === "failed") {
+          throw new Error(status.error || "Reprocessing failed");
+        }
+      }
+      throw new Error("Reprocessing timed out");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      alert(`Failed to reprocess: ${message}`);
+    } finally {
+      setIsReprocessing(false);
+    }
+  };
+
+  const handleAcceptAllSuggestions = async () => {
+    if (!jobId) return;
+    acceptAllSuggestions(); // Update local state immediately
+    try {
+      await acceptSuggestion(jobId, userId);
+      await fetchData(); // Reload from DB
+    } catch (err) {
+      console.error("Failed to accept suggestion:", err);
+    }
+  };
+
+  const handleRejectAllSuggestions = async () => {
+    if (!jobId) return;
+    rejectAllSuggestions(); // Update local state immediately
+    try {
+      await rejectSuggestion(jobId, userId);
+      await fetchData(); // Reload from DB
+    } catch (err) {
+      console.error("Failed to reject suggestion:", err);
+    }
   };
 
   const handleDownload = () => {
@@ -226,16 +387,8 @@ export default function ArabicClaimDetailPage() {
           await new Promise((r) => setTimeout(r, 3000));
           const status = await getJobStatus(reanalyzeJobId, userId);
           if (status.status === "completed") {
-            // Get the new analysis
-            const fullData = await getArabicClaimFull(jobId, userId);
-
-            // Update claim data with new pages
-            setClaimData(fullData);
-            setEditedPageNumbers([]);
-
-            // Set LLM suggestion for diff view (don't auto-apply)
-            setLlmSuggestedAnalysis(fullData.analysis || null);
-
+            // Suggestion is stored in DB — reload to pick it up
+            await fetchData();
             return;
           }
           if (status.status === "failed") {
@@ -422,6 +575,17 @@ export default function ArabicClaimDetailPage() {
                     {claimData?.total_pages} page
                     {claimData?.total_pages !== 1 ? "s" : ""}
                   </span>
+                  {isReprocessing && (
+                    <Badge className="bg-blue-100 text-blue-800">
+                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      Reprocessing
+                    </Badge>
+                  )}
+                  {hasPendingPageChanges && !isReprocessing && (
+                    <Badge className="bg-amber-100 text-amber-800">
+                      Pending reprocess
+                    </Badge>
+                  )}
                 </div>
               </div>
             </div>
@@ -479,10 +643,13 @@ export default function ArabicClaimDetailPage() {
         >
           <div className="flex-1 p-4 min-h-0">
             <PDFViewer
-              pdfUrl={mergedPdfUrl || undefined}
-              fileName="merged.pdf"
-              currentPage={selectedPage ?? undefined}
-              onPageChange={setSelectedPage}
+              pdfUrl={
+                selectedPage && pagePdfUrls[selectedPage]
+                  ? pagePdfUrls[selectedPage]
+                  : mergedPdfUrl || undefined
+              }
+              fileName={selectedPage ? `page_${selectedPage}.pdf` : "merged.pdf"}
+              currentPage={1}
             />
           </div>
         </div>
@@ -514,61 +681,136 @@ export default function ArabicClaimDetailPage() {
 
               <TabsContent value="pages">
                 <div className="space-y-4">
+                  {/* Page Management Bar */}
+                  {canEdit && (
+                    <PageManagementBar
+                      jobId={jobId!}
+                      userId={userId}
+                      pageCount={sortedPages.length}
+                      removedCount={removedPageNumbers.length}
+                      hasPendingChanges={hasPendingPageChanges}
+                      isReprocessing={isReprocessing}
+                      extractionStatus={extractionStatus}
+                      onPagesAdded={handlePagesAdded}
+                      onReprocessClick={handleReprocess}
+                      onUndoAllRemovals={handleUndoAllRemovals}
+                    />
+                  )}
+
                   <Card>
                     <CardContent className="p-0">
                       {sortedPages.length > 0 ? (
                         <div className="divide-y">
-                          {sortedPages.map((page) => (
-                            <button
-                              key={page.page_number}
-                              type="button"
-                              onClick={() =>
-                                setSelectedPage(page.page_number)
-                              }
-                              className={cn(
-                                "w-full px-4 py-3 text-left transition-colors hover:bg-slate-50",
-                                "flex items-center justify-between gap-3",
-                                selectedPage === page.page_number &&
-                                  "bg-blue-50"
-                              )}
-                            >
-                              <div className="flex items-center gap-3 min-w-0">
-                                <Eye className="h-4 w-4 text-slate-500 shrink-0" />
-                                <span className="font-medium text-sm shrink-0">
-                                  Page {page.page_number}
-                                </span>
-                                {page.has_ambiguity && (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-amber-700 border-amber-300"
-                                  >
-                                    Inferred
-                                  </Badge>
+                          {sortedPages.map((page) => {
+                            const isRemoved = removedPageNumbers.includes(page.page_number);
+                            const isPending = page.status === "pending";
+                            const isFailed = page.status === "failed";
+
+                            return (
+                              <div
+                                key={page.page_number}
+                                className={cn(
+                                  "flex items-center gap-2 group",
+                                  isRemoved && "opacity-50"
                                 )}
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <Badge
-                                  variant="outline"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    !isRemoved && setSelectedPage(page.page_number)
+                                  }
                                   className={cn(
-                                    "whitespace-nowrap",
-                                    getReadabilityColor(
-                                      page.readability_score
-                                    )
+                                    "flex-1 px-4 py-3 text-left transition-colors hover:bg-slate-50",
+                                    "flex items-center justify-between gap-3",
+                                    selectedPage === page.page_number &&
+                                      !isRemoved &&
+                                      "bg-blue-50",
+                                    isRemoved && "line-through cursor-default hover:bg-transparent"
                                   )}
                                 >
-                                  {page.readability_score.toFixed(1)}/10 -{" "}
-                                  {getReadabilityLabel(
-                                    page.readability_score
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <Eye className="h-4 w-4 text-slate-500 shrink-0" />
+                                    <span className="font-medium text-sm shrink-0">
+                                      Page {page.page_number}
+                                    </span>
+                                    {isPending && (
+                                      <Badge className="bg-amber-100 text-amber-800 border-amber-200">
+                                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                        Extracting
+                                      </Badge>
+                                    )}
+                                    {isFailed && (
+                                      <Badge className="bg-red-100 text-red-800 border-red-200">
+                                        Failed
+                                      </Badge>
+                                    )}
+                                    {isRemoved && (
+                                      <Badge className="bg-slate-100 text-slate-600 border-slate-200">
+                                        Removed
+                                      </Badge>
+                                    )}
+                                    {!isRemoved && !isPending && !isFailed && page.has_ambiguity && (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-amber-700 border-amber-300"
+                                      >
+                                        Inferred
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {!isRemoved && !isPending && !isFailed && (
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "whitespace-nowrap",
+                                          getReadabilityColor(
+                                            page.readability_score
+                                          )
+                                        )}
+                                      >
+                                        {page.readability_score.toFixed(1)}/10 -{" "}
+                                        {getReadabilityLabel(
+                                          page.readability_score
+                                        )}
+                                      </Badge>
+                                      <ChevronRight className="h-4 w-4 text-slate-400" />
+                                    </div>
                                   )}
-                                </Badge>
-                                <ChevronRight className="h-4 w-4 text-slate-400" />
+                                </button>
+
+                                {/* Remove / Restore button */}
+                                {canEdit && (
+                                  isRemoved ? (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 mr-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 shrink-0"
+                                      onClick={() => handleRestorePage(page.page_number)}
+                                      title="Restore page"
+                                    >
+                                      <Undo2 className="h-4 w-4" />
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 mr-2 text-slate-400 hover:text-red-500 hover:bg-red-50 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                      onClick={() => handleRemovePage(page.page_number)}
+                                      disabled={isPending}
+                                      title="Remove page"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )
+                                )}
                               </div>
-                            </button>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
-                        <div className="px-4 py-8 text-sm text-slate-500">
-                          No pages found.
+                        <div className="px-4 py-8 text-sm text-slate-500 text-center">
+                          No pages found. Add pages to get started.
                         </div>
                       )}
                     </CardContent>
@@ -617,7 +859,7 @@ export default function ArabicClaimDetailPage() {
                             variant="outline"
                             size="sm"
                             className="text-green-700 border-green-300 hover:bg-green-50"
-                            onClick={acceptAllSuggestions}
+                            onClick={handleAcceptAllSuggestions}
                           >
                             <Check className="h-3.5 w-3.5 mr-1" />
                             Accept All
@@ -626,7 +868,7 @@ export default function ArabicClaimDetailPage() {
                             variant="outline"
                             size="sm"
                             className="text-red-700 border-red-300 hover:bg-red-50"
-                            onClick={rejectAllSuggestions}
+                            onClick={handleRejectAllSuggestions}
                           >
                             <X className="h-3.5 w-3.5 mr-1" />
                             Reject All
