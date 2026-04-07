@@ -16,6 +16,7 @@ import {
   uploadArabicClaim,
   deleteArabicClaim,
 } from "@/lib/arabicClaimsApi";
+import { CASE_TYPES, CASE_TYPE_LABELS } from "@/types/arabicClaims";
 import type { ArabicClaimsJobSummary } from "@/types/arabicClaims";
 import { ShareDialog } from "@/components/arabic-claims/ShareDialog";
 import { cn } from "@/lib/utils";
@@ -117,7 +118,7 @@ const ClaimCard = ({ job, formatDate, onClick, onDelete, onShare, isDeleting }: 
 
               {/* Row 2: Case Name (big) */}
               <p className="font-semibold text-slate-800 text-base">
-                {isClaims ? "Claims" : "Underwriting"} • {job.claim_type || "IP"}
+                {isClaims ? "Claims" : "Underwriting"}{job.claim_type ? ` • ${job.claim_type}` : ""}
                 {job.error &&
                   <span className="text-xs font-normal text-red-500 ml-2">
                     — {job.error}
@@ -143,9 +144,11 @@ const ClaimCard = ({ job, formatDate, onClick, onDelete, onShare, isDeleting }: 
                 </span>
 
                 {/* Claim Type */}
-                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">
-                  {job.claim_type || "IP"}
-                </span>
+                {job.claim_type && (
+                  <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">
+                    {job.claim_type}
+                  </span>
+                )}
 
                 {/* Pipeline */}
                 <span className="px-2 py-0.5 bg-teal-50 text-teal-600 rounded text-xs border border-teal-200">
@@ -259,14 +262,14 @@ export default function ArabicClaimsPage() {
 
   // Upload state
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [claimType, setClaimType] = useState("IP");
+  const [claimType, setClaimType] = useState("");
   const [category, setCategory] = useState<"claims" | "underwriting">("claims");
   const [isDragOver, setIsDragOver] = useState(false);
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<ClaimCategoryFilter>("all");
-  const [claimTypeFilter, setClaimTypeFilter] = useState<"all" | "IP" | "OP">("all");
+  const [claimTypeFilter, setClaimTypeFilter] = useState<string>("all");
 
   // Delete state
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -647,38 +650,16 @@ export default function ArabicClaimsPage() {
                   {/* Claim Type Filter */}
                   <div>
                     <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">CLAIM TYPE</label>
-                    <div className="flex gap-2 mt-2">
-                      <Button
-                        variant={claimTypeFilter === "all" ? "default" : "outline"}
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => setClaimTypeFilter("all")}
-                      >
-                        All
-                      </Button>
-                      <Button
-                        variant={claimTypeFilter === "IP" ? "default" : "outline"}
-                        size="sm"
-                        className={cn(
-                          "flex-1",
-                          claimTypeFilter === "IP" && "bg-green-500 hover:bg-green-600"
-                        )}
-                        onClick={() => setClaimTypeFilter("IP")}
-                      >
-                        IP
-                      </Button>
-                      <Button
-                        variant={claimTypeFilter === "OP" ? "default" : "outline"}
-                        size="sm"
-                        className={cn(
-                          "flex-1",
-                          claimTypeFilter === "OP" && "bg-teal-500 hover:bg-teal-600"
-                        )}
-                        onClick={() => setClaimTypeFilter("OP")}
-                      >
-                        OP
-                      </Button>
-                    </div>
+                    <select
+                      className="w-full mt-2 h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                      value={claimTypeFilter}
+                      onChange={(e) => setClaimTypeFilter(e.target.value)}
+                    >
+                      <option value="all">All Types</option>
+                      {CASE_TYPES.map((ct) => (
+                        <option key={ct} value={ct}>{CASE_TYPE_LABELS[ct]}</option>
+                      ))}
+                    </select>
                   </div>
 
                   {/* Drop Zone */}
@@ -708,8 +689,10 @@ export default function ArabicClaimsPage() {
                           value={claimType}
                           onChange={(e) => setClaimType(e.target.value)}
                         >
-                          <option value="IP">Inpatient (IP)</option>
-                          <option value="OP">Outpatient (OP)</option>
+                          <option value="">-- Select (optional) --</option>
+                          {CASE_TYPES.map((ct) => (
+                            <option key={ct} value={ct}>{CASE_TYPE_LABELS[ct]}</option>
+                          ))}
                         </select>
                       </div>
                       <div>

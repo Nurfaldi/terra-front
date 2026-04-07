@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { diffWords } from "diff";
 import { ICD10Editor } from "./ICD10Editor";
+import { CASE_TYPES, CASE_TYPE_LABELS } from "@/types/arabicClaims";
 import type { DocumentAnalysis, ChronologicalLogEntry, IcdCode } from "@/types/arabicClaims";
 import type { AnalysisDiffState } from "@/hooks/useAnalysisDiff";
 
@@ -731,15 +732,81 @@ export function AnalysisPanel({
         </CardContent>
       </Card>
 
-      {/* Inferred Case Type - now editable */}
-      <EditableTextField
-        fieldName="inferred_case_type"
-        label="Inferred Case Type"
-        icon={<FileText className="h-4 w-4" />}
-        value={analysis.inferred_case_type || "UNKNOWN"}
-        placeholder="IP, OP, or UNKNOWN"
-        multiline={false}
-      />
+      {/* Inferred Case Type - dropdown */}
+      {(() => {
+        const caseTypeField = getFieldState("inferred_case_type");
+        const caseTypeHasUserEdits = caseTypeField?.hasUserEdits || false;
+        const caseTypeHasLlmSuggestion = caseTypeField?.hasLlmSuggestion || false;
+        const caseTypeValue = analysis.inferred_case_type || "UNKNOWN";
+        const caseTypeOptions = [...CASE_TYPES, "UNKNOWN" as const];
+
+        return (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Inferred Case Type
+                {caseTypeHasUserEdits && (
+                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                    Edited
+                  </Badge>
+                )}
+                {caseTypeHasLlmSuggestion && (
+                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                    Suggestion
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!readOnly && onFieldChange ? (
+                <select
+                  className="w-full h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                  value={caseTypeValue}
+                  onChange={(e) => onFieldChange("inferred_case_type", e.target.value)}
+                >
+                  {caseTypeOptions.map((ct) => (
+                    <option key={ct} value={ct}>{CASE_TYPE_LABELS[ct as keyof typeof CASE_TYPE_LABELS] || ct}</option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-sm text-slate-700">{CASE_TYPE_LABELS[caseTypeValue as keyof typeof CASE_TYPE_LABELS] || caseTypeValue}</p>
+              )}
+
+              {/* Accept/Reject for AI suggestions */}
+              {!readOnly && caseTypeHasLlmSuggestion && caseTypeField?.llmValue && (
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t">
+                  <span className="text-xs text-muted-foreground flex-1">
+                    AI suggests: <strong>{CASE_TYPE_LABELS[caseTypeField.llmValue as keyof typeof CASE_TYPE_LABELS] || caseTypeField.llmValue}</strong>
+                  </span>
+                  {onAcceptSuggestion && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-green-700 border-green-300 hover:bg-green-50"
+                      onClick={() => onAcceptSuggestion("inferred_case_type")}
+                    >
+                      <Check className="h-3.5 w-3.5 mr-1" />
+                      Accept
+                    </Button>
+                  )}
+                  {onRejectSuggestion && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-700 border-red-300 hover:bg-red-50"
+                      onClick={() => onRejectSuggestion("inferred_case_type")}
+                    >
+                      <X className="h-3.5 w-3.5 mr-1" />
+                      Reject
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Case Type Reasoning */}
       {analysis.case_type_reasoning && (
