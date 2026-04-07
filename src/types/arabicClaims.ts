@@ -37,6 +37,7 @@ export interface PageData {
   key_medical_terms: string[];
   dates_found?: DateFound[];
   is_invoice?: boolean;
+  detected_language?: string;
   status?: string;
 }
 
