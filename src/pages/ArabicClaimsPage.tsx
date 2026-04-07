@@ -83,6 +83,10 @@ const ClaimCard = ({ job, formatDate, onClick, onDelete, onShare, isDeleting }: 
   const isError = job.status === "failed";
   const isComplete = job.status === "completed";
 
+  // Derive effective case type: user-provided claim_type, or LLM-inferred from result
+  const inferredCaseType = (job.result?.analysis as Record<string, unknown> | undefined)?.inferred_case_type as string | undefined;
+  const effectiveCaseType = job.claim_type || inferredCaseType || "";
+
   return (
     <div className="relative group">
       <Card
@@ -118,7 +122,7 @@ const ClaimCard = ({ job, formatDate, onClick, onDelete, onShare, isDeleting }: 
 
               {/* Row 2: Case Name (big) */}
               <p className="font-semibold text-slate-800 text-base">
-                {isClaims ? "Claims" : "Underwriting"}{job.claim_type ? ` • ${job.claim_type}` : ""}
+                {isClaims ? "Claims" : "Underwriting"}{effectiveCaseType ? ` • ${CASE_TYPE_LABELS[effectiveCaseType as keyof typeof CASE_TYPE_LABELS] || effectiveCaseType}` : ""}
                 {job.error &&
                   <span className="text-xs font-normal text-red-500 ml-2">
                     — {job.error}
@@ -143,10 +147,10 @@ const ClaimCard = ({ job, formatDate, onClick, onDelete, onShare, isDeleting }: 
                   {isClaims ? "Claims" : "Underwriting"}
                 </span>
 
-                {/* Claim Type */}
-                {job.claim_type && (
+                {/* Claim Type (user-provided or LLM-inferred) */}
+                {effectiveCaseType && effectiveCaseType !== "UNKNOWN" && (
                   <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">
-                    {job.claim_type}
+                    {CASE_TYPE_LABELS[effectiveCaseType as keyof typeof CASE_TYPE_LABELS] || effectiveCaseType}
                   </span>
                 )}
 
@@ -335,9 +339,13 @@ export default function ArabicClaimsPage() {
       return false;
     }
 
-    // Claim Type filter (IP/OP)
-    if (claimTypeFilter !== "all" && job.claim_type !== claimTypeFilter) {
-      return false;
+    // Claim Type filter — match against user-provided OR LLM-inferred case type
+    if (claimTypeFilter !== "all") {
+      const inferredType = (job.result?.analysis as Record<string, unknown> | undefined)?.inferred_case_type as string | undefined;
+      const effective = job.claim_type || inferredType || "";
+      if (effective !== claimTypeFilter) {
+        return false;
+      }
     }
 
     // Search filter
