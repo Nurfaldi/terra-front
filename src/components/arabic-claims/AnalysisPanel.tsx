@@ -591,24 +591,26 @@ export function AnalysisPanel({
                 return (
                   <div key={i} className="group flex items-start gap-2">
                     <div
-                      className={`flex-1 text-sm p-2 rounded cursor-text hover:bg-slate-50 ${
-                        edited ? "bg-blue-50 border-l-4 border-blue-500" : ""
-                      }`}
-                      onClick={() => onFieldChange && handleEditStart(i)}
+                      className={`flex-1 text-sm p-2 rounded ${
+                        !readOnly && onFieldChange ? "cursor-text hover:bg-slate-50" : ""
+                      } ${edited ? "bg-blue-50 border-l-4 border-blue-500" : ""}`}
+                      onClick={() => !readOnly && onFieldChange && handleEditStart(i)}
                     >
                       {dateStr && <span className={`font-medium ${edited ? "text-blue-900" : ""}`}>{dateStr}: </span>}
                       <span className={edited ? "text-blue-900" : ""}>{eventText}</span>
                       {pageStr && <span className="text-slate-400">{pageStr}</span>}
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 mt-1"
-                      onClick={() => handleRemove(i)}
-                      title="Remove event"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    {!readOnly && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 mt-1"
+                        onClick={() => handleRemove(i)}
+                        title="Remove event"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                   </div>
                 );
               })}
@@ -642,7 +644,7 @@ export function AnalysisPanel({
                 </div>
               )}
 
-              {onFieldChange && !isAddingNew && (
+              {!readOnly && onFieldChange && !isAddingNew && (
                 <Button size="sm" variant="ghost" className="text-blue-600 hover:text-blue-700" onClick={() => setIsAddingNew(true)}>
                   + Add event
                 </Button>

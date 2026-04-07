@@ -91,6 +91,7 @@ export function ShareDialog({
       loadLinkSharing();
       setError(null);
       setTargetUser("");
+      setPermission("view");
       setLinkCopied(false);
       setSuggestions([]);
       setShowSuggestions(false);
