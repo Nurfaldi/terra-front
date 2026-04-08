@@ -36,6 +36,11 @@ export function PageViewer({ page, isSelected, onClick }: PageViewerProps) {
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Eye className="h-4 w-4" />
             Page {page.page_number}
+            {page.detected_language && (
+              <Badge variant="outline" className="text-xs text-slate-500 ml-1">
+                {page.detected_language.toUpperCase()}
+              </Badge>
+            )}
           </CardTitle>
           <div className="flex items-center gap-2">
             {page.is_invoice && (
@@ -60,7 +65,7 @@ export function PageViewer({ page, isSelected, onClick }: PageViewerProps) {
       <CardContent className="space-y-3">
         <div>
           <p className="text-xs font-medium text-slate-500 mb-1">Original Text</p>
-          <div className="bg-slate-50 p-2 rounded text-sm max-h-24 overflow-hidden" dir="rtl">
+          <div className="bg-slate-50 p-2 rounded text-sm max-h-24 overflow-hidden" dir={page.detected_language?.startsWith("ar") ? "rtl" : "auto"}>
             {page.original_text.slice(0, 200)}
             {page.original_text.length > 200 && "..."}
           </div>
