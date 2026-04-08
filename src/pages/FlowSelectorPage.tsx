@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { FileStack, FileText, ShieldCheck } from "lucide-react";
+import { FileStack, FileText, MessageSquare, ShieldCheck } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,7 +29,7 @@ export default function FlowSelectorPage() {
           </p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader>
               <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
@@ -77,6 +77,23 @@ export default function FlowSelectorPage() {
             <CardContent>
               <Button asChild variant="outline" className="w-full border-slate-200 hover:bg-slate-50">
                 <Link to="/underwriting">Open Underwriting</Link>
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200 bg-white shadow-sm">
+            <CardHeader>
+              <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
+                <MessageSquare className="h-5 w-5 text-blue-600" />
+              </div>
+              <CardTitle className="text-xl text-slate-800">AI Chat</CardTitle>
+              <CardDescription className="text-slate-500">
+                Underwriting assistant and policy chatbot powered by AI.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild className="w-full bg-blue-600 hover:bg-blue-700">
+                <Link to="/chat">Open Chat</Link>
               </Button>
             </CardContent>
           </Card>

@@ -7,7 +7,9 @@ import FlowSelectorPage from "./pages/FlowSelectorPage";
 import ClaimsCasesPage from "./pages/ClaimsCasesPage";
 import ClaimCaseDetailPage from "./pages/ClaimCaseDetailPage";
 import ArabicClaimsPage from "./pages/ArabicClaimsPage";
+import ArabicClaimsDashboardPage from "./pages/ArabicClaimsDashboardPage";
 import ArabicClaimDetailPage from "./pages/ArabicClaimDetailPage";
+import ChatPage from "./pages/ChatPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,8 +38,10 @@ function App() {
               <Route path="/claims" element={<ClaimsCasesPage />} />
               <Route path="/claims/:caseId" element={<ClaimCaseDetailPage />} />
               <Route path="/arabic-claims" element={<ArabicClaimsPage />} />
+              <Route path="/arabic-claims/dashboard" element={<ArabicClaimsDashboardPage />} />
               <Route path="/arabic-claims/:jobId" element={<ArabicClaimDetailPage />} />
               <Route path="/underwriting" element={<UnderwritingPage />} />
+              <Route path="/chat" element={<ChatPage />} />
             </Route>
           </Routes>
         </AuthProvider>
