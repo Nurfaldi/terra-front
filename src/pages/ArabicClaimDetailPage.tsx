@@ -51,6 +51,7 @@ import {
   reprocessClaim,
   acceptSuggestion,
   rejectSuggestion,
+  patchAnalysis,
 } from "@/lib/arabicClaimsApi";
 import { cn } from "@/lib/utils";
 import type {
@@ -373,12 +374,18 @@ export default function ArabicClaimDetailPage() {
           : "llm_extracted_unreviewed",
       }));
 
-      const editedAnalysisFieldsArray = Array.from(editedFields);
+      // Merge local editedFields with DB-persisted user_edited_fields.
+      // After Save → Regenerate, local editedFields may be empty but
+      // the DB still tracks which fields the user previously edited.
+      const persistedFields = claimData.analysis?.user_edited_fields || [];
+      const mergedEditedFields = Array.from(
+        new Set([...editedFields, ...persistedFields])
+      );
 
       const response = await reanalyzeArabicClaim(jobId, {
         pages: payloadPages,
         edited_page_numbers: Array.from(editedSet).sort((a, b) => a - b),
-        user_edited_fields: editedAnalysisFieldsArray,
+        user_edited_fields: mergedEditedFields,
         edited_analysis: userAnalysis ? (userAnalysis as unknown as Record<string, unknown>) : undefined,
         additional_instruction: additionalInstruction || undefined,
       }, userId);
@@ -410,16 +417,32 @@ export default function ArabicClaimDetailPage() {
     }
   };
 
-  const handleSaveEdits = () => {
-    if (!userAnalysis) return;
+  const handleSaveEdits = async () => {
+    if (!userAnalysis || !jobId) return;
 
-    saveEdits();
+    try {
+      // Persist edited fields to backend
+      const patchPayload: Record<string, unknown> = {};
+      for (const fieldName of editedFields) {
+        patchPayload[fieldName] = userAnalysis[fieldName as keyof typeof userAnalysis];
+      }
+      if (editedFields.size > 0) {
+        patchPayload.user_edited_fields = Array.from(editedFields);
+      }
 
-    // Update claimData with saved analysis
-    setClaimData((prev) => {
-      if (!prev) return prev;
-      return { ...prev, analysis: userAnalysis };
-    });
+      await patchAnalysis(jobId, patchPayload, userId);
+
+      saveEdits();
+
+      // Update claimData with saved analysis
+      setClaimData((prev) => {
+        if (!prev) return prev;
+        return { ...prev, analysis: userAnalysis };
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      alert(`Failed to save edits: ${message}`);
+    }
   };
 
   const handleRemoveWarning = (index: number) => {

@@ -1,12 +1,11 @@
-import { MessageSquare, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { MessageSquare } from "lucide-react";
 
 interface EmptyStateProps {
   onNewConversation: () => void;
   mode: string;
 }
 
-export function EmptyState({ onNewConversation, mode }: EmptyStateProps) {
+export function EmptyState({ mode }: EmptyStateProps) {
   return (
     <div className="flex-1 flex items-center justify-center">
       <div className="text-center max-w-md">
@@ -19,13 +18,9 @@ export function EmptyState({ onNewConversation, mode }: EmptyStateProps) {
             ? "Ask Hypatia about medical underwriting guidelines, ratings, and insurance assessments."
             : "Ask Nastenka about insurance policies, coverage details, and claims procedures."}
         </p>
-        <Button
-          className="mt-4 bg-blue-600 hover:bg-blue-700 gap-2"
-          onClick={onNewConversation}
-        >
-          <Plus className="h-4 w-4" />
-          New Conversation
-        </Button>
+        <p className="text-xs text-slate-400 mt-3">
+          Type your message below to begin.
+        </p>
       </div>
     </div>
   );

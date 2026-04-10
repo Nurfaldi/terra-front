@@ -445,19 +445,18 @@ export function AnalysisPanel({
     const [isAddingNew, setIsAddingNew] = useState(false);
     const [newEntry, setNewEntry] = useState<ChronologicalLogEntry>({ date: "", event: "" });
 
-    // Parse original entries for comparison
-    // originalValue is stored in string format: "date: event\ndate: event"
-    let originalEntries: ChronologicalLogEntry[] = [];
-    if (field?.originalValue) {
-      // Try JSON format first (new format)
+    const hasUserEdits = field?.hasUserEdits || false;
+    const hasLlmSuggestion = field?.hasLlmSuggestion || false;
+
+    // Parse entries from a field value string (JSON array or legacy "date: event" lines)
+    const parseEntries = (value: string | undefined | null): ChronologicalLogEntry[] => {
+      if (!value) return [];
       try {
-        const parsed = JSON.parse(field.originalValue);
-        if (Array.isArray(parsed)) {
-          originalEntries = parsed;
-        }
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed;
       } catch {
         // Fall back to legacy string format: "date: event" per line
-        originalEntries = field.originalValue.split("\n").filter(Boolean).map((line) => {
+        return value.split("\n").filter(Boolean).map((line) => {
           const match = line.match(/^(.+?):\s*(.+)$/);
           if (match) {
             return { date: match[1].trim(), event: match[2].trim(), date_iso: "", source_page: undefined };
@@ -465,7 +464,33 @@ export function AnalysisPanel({
           return { date: "", event: line.trim(), date_iso: "", source_page: undefined };
         });
       }
-    }
+      return [];
+    };
+
+    const originalEntries = parseEntries(field?.originalValue);
+    const llmEntries = (hasLlmSuggestion && field?.llmValue) ? parseEntries(field.llmValue) : [];
+
+    // Match entries by event text (ignoring dates) so date-only changes
+    // show as inline updates rather than confusing remove+add pairs.
+    const eventKey = (e: ChronologicalLogEntry) => (e.event || "").trim();
+    const currentEventKeys = new Set(entries.map(eventKey));
+    const llmEventKeys = new Set(llmEntries.map(eventKey));
+
+    // Genuinely new entries (event text not in current)
+    const llmAdditions = llmEntries.filter((e) => !currentEventKeys.has(eventKey(e)));
+    // Genuinely removed entries (event text not in LLM)
+    const isLlmRemoved = (entry: ChronologicalLogEntry) =>
+      hasLlmSuggestion && llmEventKeys.size > 0 && !llmEventKeys.has(eventKey(entry));
+    // Date update: same event exists in LLM but with a different date
+    const getLlmDateUpdate = (entry: ChronologicalLogEntry): string | null => {
+      if (!hasLlmSuggestion || llmEntries.length === 0) return null;
+      const key = eventKey(entry);
+      const match = llmEntries.find((e) => eventKey(e) === key);
+      if (!match) return null;
+      const curDate = entry.date || entry.date_iso || "";
+      const llmDate = match.date || match.date_iso || "";
+      return curDate !== llmDate ? llmDate : null;
+    };
 
     const handleEditStart = (index: number) => {
       setEditingIndex(index);
@@ -517,9 +542,6 @@ export function AnalysisPanel({
       setNewEntry({ date: "", event: "" });
       setIsAddingNew(false);
     };
-
-    const hasUserEdits = field?.hasUserEdits || false;
-    const hasLlmSuggestion = field?.hasLlmSuggestion || false;
 
     // Check if a specific entry was edited
     const isEntryEdited = (index: number) => {
@@ -588,18 +610,33 @@ export function AnalysisPanel({
                 const dateStr = entry.date || entry.date_iso || "";
                 const pageStr = entry.source_page ? ` (p.${entry.source_page})` : "";
                 const edited = isEntryEdited(i);
+                const removed = isLlmRemoved(entry);
+                const dateUpdate = getLlmDateUpdate(entry);
 
                 return (
                   <div key={i} className="group flex items-start gap-2">
                     <div
                       className={`flex-1 text-sm p-2 rounded ${
                         !readOnly && onFieldChange ? "cursor-text hover:bg-slate-50" : ""
-                      } ${edited ? "bg-blue-50 border-l-4 border-blue-500" : ""}`}
-                      onClick={() => !readOnly && onFieldChange && handleEditStart(i)}
+                      } ${removed
+                        ? "bg-red-50 border-l-4 border-red-400 line-through text-red-500"
+                        : dateUpdate
+                          ? "bg-amber-50 border-l-4 border-amber-400"
+                          : edited
+                            ? "bg-blue-50 border-l-4 border-blue-500"
+                            : ""
+                      }`}
+                      onClick={() => !readOnly && onFieldChange && !removed && handleEditStart(i)}
                     >
-                      {dateStr && <span className={`font-medium ${edited ? "text-blue-900" : ""}`}>{dateStr}: </span>}
-                      <span className={edited ? "text-blue-900" : ""}>{eventText}</span>
-                      {pageStr && <span className="text-slate-400">{pageStr}</span>}
+                      {dateStr && (
+                        <span className={`font-medium ${removed ? "text-red-500" : edited ? "text-blue-900" : ""}`}>
+                          {dateUpdate ? (
+                            <><span className="line-through text-red-400">{dateStr}</span>{" "}<span className="text-green-700">{dateUpdate}</span></>
+                          ) : dateStr}:{" "}
+                        </span>
+                      )}
+                      <span className={removed ? "text-red-500" : edited ? "text-blue-900" : ""}>{eventText}</span>
+                      {pageStr && <span className={removed ? "text-red-300" : "text-slate-400"}>{pageStr}</span>}
                     </div>
                     {!readOnly && (
                       <Button
@@ -643,6 +680,43 @@ export function AnalysisPanel({
                     <Check className="h-4 w-4" />
                   </Button>
                 </div>
+              )}
+
+              {/* AI suggested additions (entries in LLM but not in current) */}
+              {hasLlmSuggestion && llmAdditions.length > 0 && (
+                <>
+                  {llmAdditions.map((entry, i) => {
+                    const eDateStr = entry.date || entry.date_iso || "";
+                    const ePageStr = entry.source_page ? ` (p.${entry.source_page})` : "";
+                    return (
+                      <div key={`llm-${i}`} className="group flex items-start gap-2">
+                        <div className="flex-1 text-sm p-2 rounded bg-green-50 text-green-800 border-l-4 border-green-500">
+                          {eDateStr && <span className="font-medium">{eDateStr}: </span>}
+                          <span>{entry.event || ""}</span>
+                          {ePageStr && <span className="text-green-500">{ePageStr}</span>}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-green-600 hover:text-green-700 hover:bg-green-50 mt-1"
+                          onClick={() => {
+                            const newEntries = [...entries, entry];
+                            onFieldChange?.("chronological_log", JSON.stringify(newEntries));
+                          }}
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50 mt-1"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </>
               )}
 
               {!readOnly && onFieldChange && !isAddingNew && (
