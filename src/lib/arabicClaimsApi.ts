@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import type {
+  AnalyticsDashboard,
   ArabicClaimsData,
   ArabicClaimsJobSummary,
   PageData,
@@ -380,4 +381,20 @@ export async function getICD10Code(code: string): Promise<ICD10SearchResult> {
     `/arabic-claims/icd10/${encodeURIComponent(code)}`,
     { method: "GET" }
   );
+}
+
+// -- Analytics Dashboard API --------------------------------------------------
+
+export async function getAnalyticsDashboard(
+  userId: string,
+  reportingCurrency: string = "USD",
+  dateFrom?: string,
+  dateTo?: string
+): Promise<AnalyticsDashboard> {
+  const params = new URLSearchParams({ user_id: userId, reporting_currency: reportingCurrency });
+  if (dateFrom) params.append("date_from", dateFrom);
+  if (dateTo) params.append("date_to", dateTo);
+  return apiRequest<AnalyticsDashboard>(`/dashboard/analytics?${params.toString()}`, {
+    method: "GET",
+  });
 }

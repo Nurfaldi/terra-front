@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { ClipboardCheck, FileStack, FileText, LayoutGrid } from "lucide-react";
+import { ClipboardCheck, FileStack, FileText, LayoutGrid, MessageSquare } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> { }
@@ -29,6 +29,11 @@ export function Sidebar({ className }: SidebarProps) {
             href: "/underwriting",
             icon: ClipboardCheck,
         },
+        {
+            title: "AI Chat",
+            href: "/chat",
+            icon: MessageSquare,
+        },
     ];
 
     return (
@@ -43,7 +48,8 @@ export function Sidebar({ className }: SidebarProps) {
                             const isActive =
                                 pathname === item.href ||
                                 (item.href === "/claims" && pathname.startsWith("/claims/")) ||
-                                (item.href === "/arabic-claims" && pathname.startsWith("/arabic-claims/"));
+                                (item.href === "/arabic-claims" && pathname.startsWith("/arabic-claims/")) ||
+                                (item.href === "/chat" && pathname.startsWith("/chat"));
                             return (
                                 <Link
                                     key={item.href}

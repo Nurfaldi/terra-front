@@ -152,3 +152,72 @@ export interface ReanalyzeResponse {
   job_id: string;
   status: string;
 }
+
+// ---------- Analytics Dashboard types ----------------------------------------
+
+export interface IcdCodeStat {
+  code: string;
+  description: string;
+  count: number;
+  total_amount: number;
+}
+
+export interface ProviderStat {
+  provider_name: string;
+  claim_count: number;
+  total_amount: number;
+}
+
+export interface TimeSeriesPoint {
+  date: string;
+  claim_count: number;
+  total_amount: number;
+}
+
+export interface CategoryBreakdownItem {
+  category: string;
+  count: number;
+}
+
+export interface ClaimTypeBreakdownItem {
+  claim_type: string;
+  count: number;
+}
+
+export interface CurrencyBreakdownItem {
+  currency: string;
+  count: number;
+  total_amount: number;
+}
+
+export interface ClaimRow {
+  job_id: string;
+  created_at: string | null;
+  category: string;
+  claim_type: string;
+  status: string;
+  claimant_name: string | null;
+  provider_names: string[];
+  icd_codes: { code: string; description?: string }[];
+  total_amount: number | null;
+  currency: string | null;
+}
+
+export interface AnalyticsDashboard {
+  total_claims: number;
+  total_providers: number;
+  total_invoice_amount: number;
+  total_line_items: number;
+  average_readability: number;
+  reporting_currency: string;
+  conversion_warnings: string[];
+  currency_breakdown: CurrencyBreakdownItem[];
+  top_icd_by_count: IcdCodeStat[];
+  top_icd_by_amount: IcdCodeStat[];
+  top_providers_by_count: ProviderStat[];
+  top_providers_by_amount: ProviderStat[];
+  claims_over_time: TimeSeriesPoint[];
+  category_breakdown: CategoryBreakdownItem[];
+  claim_type_breakdown: ClaimTypeBreakdownItem[];
+  claims_table: ClaimRow[];
+}
