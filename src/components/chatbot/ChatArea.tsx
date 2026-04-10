@@ -37,14 +37,7 @@ export function ChatArea({
     }
   };
 
-  // Show empty state when no conversation and no messages
-  if (!hasActiveConversation && messages.length === 0) {
-    return (
-      <div className="flex-1 flex flex-col h-full bg-slate-50">
-        <EmptyState onNewConversation={onNewConversation} mode={mode} />
-      </div>
-    );
-  }
+  const showEmpty = !hasActiveConversation && messages.length === 0;
 
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-50">
@@ -56,11 +49,15 @@ export function ChatArea({
           onInsurerChange={setInsurer}
         />
       )}
-      <MessageList
-        messages={messages}
-        isStreaming={isStreaming}
-        streamingContent={streamingContent}
-      />
+      {showEmpty ? (
+        <EmptyState onNewConversation={() => {}} mode={mode} />
+      ) : (
+        <MessageList
+          messages={messages}
+          isStreaming={isStreaming}
+          streamingContent={streamingContent}
+        />
+      )}
       <MessageInput
         onSend={handleSend}
         onStop={onStop}

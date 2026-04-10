@@ -48,7 +48,7 @@ export default function ArabicClaimsDashboardPage() {
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [currency, setCurrency] = useState<"USD" | "AED">("USD");
+  const [currency, setCurrency] = useState<"USD" | "QAR">("USD");
 
   const { data, isLoading, error } = useQuery<AnalyticsDashboard>({
     queryKey: ["arabic-claims-analytics", userId, currency, dateFrom, dateTo],
@@ -128,12 +128,12 @@ export default function ArabicClaimsDashboardPage() {
                 USD
               </Button>
               <Button
-                variant={currency === "AED" ? "default" : "ghost"}
+                variant={currency === "QAR" ? "default" : "ghost"}
                 size="sm"
-                className={currency === "AED" ? "bg-blue-600 hover:bg-blue-700 h-7 px-3 text-xs" : "h-7 px-3 text-xs text-slate-600"}
-                onClick={() => setCurrency("AED")}
+                className={currency === "QAR" ? "bg-blue-600 hover:bg-blue-700 h-7 px-3 text-xs" : "h-7 px-3 text-xs text-slate-600"}
+                onClick={() => setCurrency("QAR")}
               >
-                AED
+                QAR
               </Button>
             </div>
             <div className="w-px h-6 bg-slate-200" />

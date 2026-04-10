@@ -37,7 +37,6 @@ export interface PageData {
   key_medical_terms: string[];
   dates_found?: DateFound[];
   is_invoice?: boolean;
-  detected_language?: string;
   status?: string;
 }
 
@@ -95,6 +94,7 @@ export interface DocumentAnalysis {
   icd_codes?: IcdCode[];
   currency?: string | null;
   total_claimed_amount?: number | null;
+  user_edited_fields?: string[];
 }
 
 export interface ArabicClaimsData {

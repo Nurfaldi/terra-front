@@ -140,6 +140,25 @@ export async function deleteArabicClaim(
   );
 }
 
+// -- Analysis PATCH API -------------------------------------------------------
+
+export async function patchAnalysis(
+  jobId: string,
+  fields: Record<string, unknown>,
+  userId?: string
+): Promise<void> {
+  const params = new URLSearchParams();
+  if (userId) params.append("user_id", userId);
+  const qs = params.toString();
+  return apiRequest<void>(
+    `/arabic-claims/${encodeURIComponent(jobId)}/analysis${qs ? `?${qs}` : ""}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    }
+  );
+}
+
 // -- Suggestion Accept/Reject API ---------------------------------------------
 
 export async function acceptSuggestion(
