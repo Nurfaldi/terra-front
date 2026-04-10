@@ -10,6 +10,8 @@ import ArabicClaimsPage from "./pages/ArabicClaimsPage";
 import ArabicClaimsDashboardPage from "./pages/ArabicClaimsDashboardPage";
 import ArabicClaimDetailPage from "./pages/ArabicClaimDetailPage";
 import ChatPage from "./pages/ChatPage";
+import OrigoListPage from "./pages/OrigoListPage";
+import OrigoDetailPage from "./pages/OrigoDetailPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -42,6 +44,8 @@ function App() {
               <Route path="/arabic-claims/:jobId" element={<ArabicClaimDetailPage />} />
               <Route path="/underwriting" element={<UnderwritingPage />} />
               <Route path="/chat" element={<ChatPage />} />
+              <Route path="/origo" element={<OrigoListPage />} />
+              <Route path="/origo/:jobId" element={<OrigoDetailPage />} />
             </Route>
           </Routes>
         </AuthProvider>
