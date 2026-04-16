@@ -12,12 +12,16 @@ import type {
 export async function uploadArabicClaim(
   files: File[],
   claimType: string = "",
-  userId?: string
+  userId?: string,
+  claimId?: string,
+  claimantName?: string,
 ): Promise<SubmitResponse> {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
   formData.append("claim_type", claimType);
   if (userId) formData.append("user_id", userId);
+  if (claimId) formData.append("claim_id", claimId);
+  if (claimantName) formData.append("claimant_name", claimantName);
 
   return apiRequest<SubmitResponse>("/arabic-claims/upload", {
     method: "POST",

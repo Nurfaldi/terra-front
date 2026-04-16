@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Upload, Clock, ChevronRight,
+  Upload, Clock, ChevronRight, X,
   Search, Receipt, Globe, LogOut, Activity, Trash2, Download, BarChart3,
   Loader2, RotateCcw, LayoutGrid, FileText, Share2, Users, Eye, Pencil,
 } from "lucide-react";
@@ -20,6 +20,13 @@ import { CASE_TYPES, CASE_TYPE_LABELS } from "@/types/arabicClaims";
 import type { ArabicClaimsJobSummary } from "@/types/arabicClaims";
 import { ShareDialog } from "@/components/arabic-claims/ShareDialog";
 import { StatsCard } from "@/components/arabic-claims/StatsCard";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 // Type filter options
@@ -47,6 +54,15 @@ const ClaimCard = ({ job, formatDate, onClick, onDelete, onShare, isDeleting }: 
   const inferredCaseType = (job.result?.analysis as Record<string, unknown> | undefined)?.inferred_case_type as string | undefined;
   const effectiveCaseType = job.claim_type || inferredCaseType || "";
 
+  // Claimant name: user-provided → OCR-detected → empty
+  const userClaimantName = job.input_data?.claimant_name as string | undefined;
+  const ocrClaimantName = (job.result?.analysis as Record<string, unknown> | undefined)?.claimant_name as string | undefined;
+  const displayClaimantName = userClaimantName || ocrClaimantName || "";
+
+  // Claim ID: user-provided → fallback to job hash
+  const userClaimId = job.input_data?.claim_id as string | undefined;
+  const displayClaimId = userClaimId || `CLAIM #${job.job_id.slice(0, 8).toUpperCase()}`;
+
   return (
     <div className="relative group">
       <Card
@@ -64,7 +80,7 @@ const ClaimCard = ({ job, formatDate, onClick, onDelete, onShare, isDeleting }: 
               {/* Row 1: Claim ID + Status Badge */}
               <div className="flex items-center gap-3 mb-1">
                 <span className="text-xs text-blue-600 font-medium">
-                  CLAIM #{job.job_id.slice(0, 8).toUpperCase()}
+                  {displayClaimId}
                 </span>
 
                 {/* Status Badge */}
@@ -80,9 +96,10 @@ const ClaimCard = ({ job, formatDate, onClick, onDelete, onShare, isDeleting }: 
                 </span>
               </div>
 
-              {/* Row 2: Case Name (big) */}
+              {/* Row 2: Claimant Name + Case Type */}
               <p className="font-semibold text-slate-800 text-base">
-                {isClaims ? "Claims" : "Underwriting"}{effectiveCaseType ? ` • ${CASE_TYPE_LABELS[effectiveCaseType as keyof typeof CASE_TYPE_LABELS] || effectiveCaseType}` : ""}
+                {displayClaimantName || (isClaims ? "Claims" : "Underwriting")}
+                {effectiveCaseType ? ` • ${CASE_TYPE_LABELS[effectiveCaseType as keyof typeof CASE_TYPE_LABELS] || effectiveCaseType}` : ""}
                 {job.error &&
                   <span className="text-xs font-normal text-red-500 ml-2">
                     — {job.error}
@@ -227,8 +244,10 @@ export default function ArabicClaimsPage() {
   // Upload state
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [claimType, setClaimType] = useState("");
-  const [category, setCategory] = useState<"claims" | "underwriting">("claims");
+  const [claimId, setClaimId] = useState("");
+  const [claimantName, setClaimantName] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState("");
@@ -247,9 +266,13 @@ export default function ArabicClaimsPage() {
 
   // Upload Mutation
   const uploadMutation = useMutation({
-    mutationFn: () => uploadArabicClaim(selectedFiles, claimType, userId),
+    mutationFn: () => uploadArabicClaim(selectedFiles, claimType, userId, claimId, claimantName),
     onSuccess: () => {
       setSelectedFiles([]);
+      setClaimType("");
+      setClaimId("");
+      setClaimantName("");
+      setShowUploadModal(false);
       void queryClient.invalidateQueries({
         queryKey: ["arabic-claims-jobs"],
       });
@@ -319,8 +342,7 @@ export default function ArabicClaimsPage() {
   });
 
   // Handlers
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUpload = async () => {
     if (!selectedFiles.length) return;
     try {
       await uploadMutation.mutateAsync();
@@ -329,6 +351,10 @@ export default function ArabicClaimsPage() {
       alert(`Failed to upload: ${message}`);
     }
   };
+
+  const handleRemoveFile = useCallback((index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
   const handleShare = useCallback((job: ArabicClaimsJobSummary) => {
     setShareJobId(job.job_id);
@@ -361,7 +387,7 @@ export default function ArabicClaimsPage() {
       f.type.startsWith("image/")
     );
     if (files.length) {
-      setSelectedFiles(files);
+      setSelectedFiles(prev => [...prev, ...files]);
     }
   }, []);
 
@@ -425,7 +451,7 @@ export default function ArabicClaimsPage() {
             variant="ghost"
             size="icon"
             className="h-10 w-10 text-blue-600 bg-blue-50"
-            title="Arabic Claims (current)"
+            title="Claims (current)"
           >
             <FileText className="h-5 w-5" />
           </Button>
@@ -513,8 +539,11 @@ export default function ArabicClaimsPage() {
               size="sm"
               className="gap-2 bg-blue-600 hover:bg-blue-700"
               onClick={() => {
-                // Trigger file input
-                document.getElementById('file-upload-main')?.click();
+                setSelectedFiles([]);
+                setClaimType("");
+                setClaimId("");
+                setClaimantName("");
+                setShowUploadModal(true);
               }}
             >
               <Upload className="h-4 w-4" />
@@ -610,13 +639,10 @@ export default function ArabicClaimsPage() {
                         Claims
                       </Button>
                       <Button
-                        variant={categoryFilter === "underwriting" ? "default" : "outline"}
+                        variant="outline"
                         size="sm"
-                        className={cn(
-                          "justify-start",
-                          categoryFilter === "underwriting" && "bg-purple-500 hover:bg-purple-600"
-                        )}
-                        onClick={() => setCategoryFilter("underwriting")}
+                        className="justify-start opacity-40 cursor-not-allowed"
+                        disabled
                       >
                         <Activity className="h-4 w-4 mr-2" />
                         Underwriting
@@ -638,71 +664,6 @@ export default function ArabicClaimsPage() {
                       ))}
                     </select>
                   </div>
-
-                  {/* Drop Zone */}
-                  <div
-                    className={cn(
-                      "border-2 border-dashed rounded-lg p-4 text-center transition-all duration-200 cursor-pointer",
-                      isDragOver ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:border-blue-400 hover:bg-slate-50"
-                    )}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    onClick={() => document.getElementById('file-upload-sidebar')?.click()}
-                  >
-                    <Upload className="h-6 w-6 text-slate-400 mx-auto mb-2" />
-                    <p className="text-xs text-slate-600 font-medium">
-                      {selectedFiles.length > 0 ? `${selectedFiles.length} file(s) selected` : 'Drop files or click to upload'}
-                    </p>
-                  </div>
-
-                  {/* Upload Form (when files selected) */}
-                  {selectedFiles.length > 0 && (
-                    <div className="space-y-3 p-3 bg-slate-50 rounded-lg">
-                      <div>
-                        <label className="text-xs font-medium text-slate-600">Claim Type</label>
-                        <select
-                          className="w-full mt-1 h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
-                          value={claimType}
-                          onChange={(e) => setClaimType(e.target.value)}
-                        >
-                          <option value="">-- Select (optional) --</option>
-                          {CASE_TYPES.map((ct) => (
-                            <option key={ct} value={ct}>{CASE_TYPE_LABELS[ct]}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-slate-600">Category</label>
-                        <select
-                          className="w-full mt-1 h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
-                          value={category}
-                          onChange={(e) => setCategory(e.target.value as "claims" | "underwriting")}
-                        >
-                          <option value="claims">Claims</option>
-                          <option value="underwriting">Underwriting</option>
-                        </select>
-                      </div>
-                      <Button
-                        className="w-full bg-blue-600 hover:bg-blue-700"
-                        size="sm"
-                        onClick={handleUpload}
-                        disabled={uploadMutation.isPending}
-                      >
-                        {uploadMutation.isPending ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Uploading...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="h-4 w-4 mr-2" />
-                            Submit Claim
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  )}
                 </div>
               </CardContent>
             </Card>
@@ -773,23 +734,123 @@ export default function ArabicClaimsPage() {
         />
       )}
 
-      {/* Hidden File Inputs */}
-      <input
-        type="file"
-        multiple
-        accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff"
-        className="hidden"
-        id="file-upload-main"
-        onChange={(e) => setSelectedFiles(Array.from(e.target.files ?? []))}
-      />
-      <input
-        type="file"
-        multiple
-        accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff"
-        className="hidden"
-        id="file-upload-sidebar"
-        onChange={(e) => setSelectedFiles(Array.from(e.target.files ?? []))}
-      />
+      {/* Upload Modal */}
+      <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>New Claim</DialogTitle>
+            <DialogDescription>Upload documents to process a new claim</DialogDescription>
+          </DialogHeader>
+
+          {/* Drag & Drop Zone */}
+          <div
+            className={cn(
+              "border-2 border-dashed rounded-lg p-6 text-center transition-all duration-200 cursor-pointer",
+              isDragOver ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:border-blue-400 hover:bg-slate-50"
+            )}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => document.getElementById('file-upload-modal')?.click()}
+          >
+            <Upload className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+            <p className="text-sm text-slate-600 font-medium">
+              Drop files here or click to browse
+            </p>
+            <p className="text-xs text-slate-400 mt-1">PDF, PNG, JPG, TIFF</p>
+          </div>
+
+          {/* File List */}
+          {selectedFiles.length > 0 && (
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {selectedFiles.map((file, index) => (
+                <div key={`${file.name}-${index}`} className="flex items-center justify-between p-2 bg-slate-50 rounded-md">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                    <span className="text-sm text-slate-700 truncate">{file.name}</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-slate-400 hover:text-red-500 flex-shrink-0"
+                    onClick={() => handleRemoveFile(index)}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Claim Details */}
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-slate-600">Claim ID</label>
+              <Input
+                placeholder="e.g. CLM-2026-001 (optional)"
+                value={claimId}
+                onChange={(e) => setClaimId(e.target.value)}
+                className="mt-1 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Claimant Name</label>
+              <Input
+                placeholder="e.g. Ahmad Hassan (auto-detected if empty)"
+                value={claimantName}
+                onChange={(e) => setClaimantName(e.target.value)}
+                className="mt-1 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Claim Type (optional)</label>
+              <select
+                className="w-full mt-1 h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                value={claimType}
+                onChange={(e) => setClaimType(e.target.value)}
+              >
+                <option value="">-- Select --</option>
+                {CASE_TYPES.map((ct) => (
+                  <option key={ct} value={ct}>{CASE_TYPE_LABELS[ct]}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Process Button */}
+          <Button
+            className="w-full bg-blue-600 hover:bg-blue-700"
+            onClick={handleUpload}
+            disabled={selectedFiles.length === 0 || uploadMutation.isPending}
+          >
+            {uploadMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <Upload className="h-4 w-4 mr-2" />
+                Process {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''}
+              </>
+            )}
+          </Button>
+
+          {/* Hidden File Input */}
+          <input
+            type="file"
+            multiple
+            accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff"
+            className="hidden"
+            id="file-upload-modal"
+            onChange={(e) => {
+              const newFiles = Array.from(e.target.files ?? []);
+              setSelectedFiles(prev => [...prev, ...newFiles]);
+              e.target.value = '';
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -18,7 +18,7 @@ import {
   Trash2,
   CheckCircle,
   User,
-  DollarSign,
+  Coins,
 } from "lucide-react";
 import { diffWords } from "diff";
 import { ICD10Editor } from "./ICD10Editor";
@@ -27,6 +27,32 @@ import type { DocumentAnalysis, ChronologicalLogEntry, IcdCode } from "@/types/a
 import type { AnalysisDiffState } from "@/hooks/useAnalysisDiff";
 
 type AnalysisFieldName = keyof AnalysisDiffState;
+
+// Approximate USD exchange rates for common currencies
+const USD_RATES: Record<string, number> = {
+  USD: 1,
+  SAR: 0.267,  // Saudi Riyal
+  AED: 0.272,  // UAE Dirham
+  QAR: 0.275,  // Qatari Riyal
+  KWD: 3.26,   // Kuwaiti Dinar
+  BHD: 2.65,   // Bahraini Dinar
+  OMR: 2.60,   // Omani Rial
+  EGP: 0.020,  // Egyptian Pound
+  JOD: 1.41,   // Jordanian Dinar
+  EUR: 1.08,
+  GBP: 1.27,
+  INR: 0.012,
+  PKR: 0.0036,
+  IDR: 0.000063,
+  MYR: 0.22,
+  SGD: 0.74,
+  PHP: 0.018,
+};
+
+function toUsd(amount: number, currency: string): number | null {
+  const rate = USD_RATES[currency.toUpperCase()];
+  return rate != null ? amount * rate : null;
+}
 
 interface AnalysisPanelProps {
   analysis: DocumentAnalysis | null;
@@ -906,25 +932,38 @@ export function AnalysisPanel({
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
-            <DollarSign className="h-4 w-4" />
+            <Coins className="h-4 w-4" />
             Financial Information
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-baseline gap-2">
-            {analysis.total_claimed_amount != null ? (
-              <>
-                <span className="text-2xl font-bold text-green-600">
-                  {analysis.total_claimed_amount.toLocaleString()}
-                </span>
-                <span className="text-sm text-slate-500">
-                  {analysis.currency || "USD"}
-                </span>
-              </>
-            ) : (
-              <span className="text-sm text-slate-400">No financial information available</span>
-            )}
-          </div>
+          {analysis.total_claimed_amount != null ? (() => {
+            const currency = analysis.currency || "USD";
+            const isUsd = currency.toUpperCase() === "USD";
+            const usdAmount = isUsd ? analysis.total_claimed_amount : toUsd(analysis.total_claimed_amount, currency);
+            return (
+              <div className="space-y-1">
+                {/* Original currency */}
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold text-green-600">
+                    {analysis.total_claimed_amount.toLocaleString()}
+                  </span>
+                  <span className="text-sm text-slate-500">{currency}</span>
+                </div>
+                {/* USD equivalent (if not already USD) */}
+                {!isUsd && usdAmount != null && (
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-lg font-semibold text-slate-600">
+                      ~{usdAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    <span className="text-xs text-slate-400">USD (approx.)</span>
+                  </div>
+                )}
+              </div>
+            );
+          })() : (
+            <span className="text-sm text-slate-400">No financial information available</span>
+          )}
         </CardContent>
       </Card>
 
