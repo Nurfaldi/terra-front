@@ -533,7 +533,7 @@ export default function ArabicClaimDetailPage() {
             size="icon"
             className="h-10 w-10 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
             onClick={() => navigate("/arabic-claims")}
-            title="Arabic Claims List"
+            title="Claims List"
           >
             <FileText className="h-5 w-5" />
           </Button>
@@ -570,10 +570,10 @@ export default function ArabicClaimDetailPage() {
               </div>
               <div>
                 <h1 className="text-lg font-semibold text-foreground">
-                  Arabic Claim: {jobId?.slice(0, 8)}...
+                  Claim: {jobId?.slice(0, 8)}...
                 </h1>
                 <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="outline">Arabic Claims</Badge>
+                  <Badge variant="outline">Claims</Badge>
                   <Badge
                     className={
                       jobStatus === "completed"

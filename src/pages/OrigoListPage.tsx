@@ -108,7 +108,7 @@ export default function OrigoListPage() {
             size="icon"
             className="h-10 w-10 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
             onClick={() => navigate("/arabic-claims")}
-            title="Arabic Claims"
+            title="Claims"
           >
             <FileText className="h-5 w-5" />
           </Button>

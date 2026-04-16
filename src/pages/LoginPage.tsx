@@ -133,7 +133,7 @@ export default function LoginPage() {
 
                 {/* Footer */}
                 <p className="text-center text-xs text-slate-400 mt-8">
-                    © 2026 Arabic Claims POC - Claim AI Dashboard
+                    © 2026 Claims POC - Claim AI Dashboard
                 </p>
             </div>
         </div>

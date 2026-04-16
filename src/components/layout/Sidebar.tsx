@@ -8,7 +8,7 @@ export function Sidebar({ className }: SidebarProps) {
     const location = useLocation();
     const pathname = location.pathname;
 
-    const items = [
+    const items: Array<{ title: string; href: string; icon: React.ComponentType<{ className?: string }>; disabled?: boolean }> = [
         {
             title: "Flows",
             href: "/flows",
@@ -20,7 +20,7 @@ export function Sidebar({ className }: SidebarProps) {
             icon: FileStack,
         },
         {
-            title: "Arabic Claims",
+            title: "Claims",
             href: "/arabic-claims",
             icon: FileText,
         },
@@ -28,6 +28,7 @@ export function Sidebar({ className }: SidebarProps) {
             title: "Underwriting V2",
             href: "/underwriting",
             icon: ClipboardCheck,
+            disabled: true,
         },
         {
             title: "AI Chat",
@@ -45,6 +46,17 @@ export function Sidebar({ className }: SidebarProps) {
                     </h2>
                     <div className="space-y-1">
                         {items.map((item) => {
+                            if (item.disabled) {
+                                return (
+                                    <div
+                                        key={item.href}
+                                        className="flex items-center rounded-md px-3 py-2 text-sm font-medium text-slate-300 cursor-not-allowed"
+                                    >
+                                        <item.icon className="mr-2 h-4 w-4" />
+                                        {item.title}
+                                    </div>
+                                );
+                            }
                             const isActive =
                                 pathname === item.href ||
                                 (item.href === "/claims" && pathname.startsWith("/claims/")) ||

@@ -25,7 +25,7 @@ export default function FlowSelectorPage() {
             Olvo Claims Processing
           </h1>
           <p className="text-slate-500">
-            Choose a workflow. Claims, Arabic Claims, and Underwriting are isolated entry points.
+            Choose a workflow to get started.
           </p>
         </div>
 
@@ -52,19 +52,19 @@ export default function FlowSelectorPage() {
               <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
                 <FileText className="h-5 w-5 text-blue-600" />
               </div>
-              <CardTitle className="text-xl text-slate-800">Arabic Claims</CardTitle>
+              <CardTitle className="text-xl text-slate-800">Claims</CardTitle>
               <CardDescription className="text-slate-500">
-                Arabic medical document OCR, translation, and claim analysis pipeline.
+                Medical document OCR, translation, and claim analysis pipeline.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Button asChild className="w-full bg-blue-600 hover:bg-blue-700">
-                <Link to="/arabic-claims">Open Arabic Claims</Link>
+                <Link to="/arabic-claims">Open Claims</Link>
               </Button>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200 bg-white shadow-sm">
+          <Card className="border-slate-200 bg-white shadow-sm opacity-50">
             <CardHeader>
               <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
                 <ShieldCheck className="h-5 w-5 text-blue-600" />
@@ -75,8 +75,8 @@ export default function FlowSelectorPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button asChild variant="outline" className="w-full border-slate-200 hover:bg-slate-50">
-                <Link to="/underwriting">Open Underwriting</Link>
+              <Button disabled variant="outline" className="w-full border-slate-200">
+                Open Underwriting
               </Button>
             </CardContent>
           </Card>
