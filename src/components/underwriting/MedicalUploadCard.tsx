@@ -1,24 +1,44 @@
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { FileText, Upload, CheckCircle, AlertCircle, Loader2, X } from "lucide-react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import {
+    AlertCircle,
+    CheckCircle2,
+    FileText,
+    Loader2,
+    Lock,
+    Plus,
+    UploadCloud,
+    X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 interface MedicalUploadCardProps {
-    onUpload: (files: File[]) => Promise<any>;
+    onUpload: (files: File[]) => Promise<unknown>;
     isLoading: boolean;
     isEnabled: boolean;
     status: "idle" | "success" | "error";
+    statusMessage?: string | null;
     onReset?: () => void;
 }
 
-export function MedicalUploadCard({ onUpload, isLoading, isEnabled, status, onReset }: MedicalUploadCardProps) {
+function formatSize(bytes: number) {
+    return (bytes / 1024 / 1024).toFixed(2) + " MB";
+}
+
+export function MedicalUploadCard({
+    onUpload,
+    isLoading,
+    isEnabled,
+    status,
+    statusMessage,
+    onReset,
+}: MedicalUploadCardProps) {
     const [files, setFiles] = useState<File[]>([]);
     const [error, setError] = useState<string | null>(null);
 
-    const onDrop = useCallback((acceptedFiles: File[]) => {
-        setFiles((prev) => [...prev, ...acceptedFiles]);
+    const onDrop = useCallback((accepted: File[]) => {
+        setFiles((prev) => [...prev, ...accepted]);
         setError(null);
     }, []);
 
@@ -28,125 +48,192 @@ export function MedicalUploadCard({ onUpload, isLoading, isEnabled, status, onRe
         disabled: !isEnabled || isLoading || status === "success",
     });
 
-    const removeFile = (index: number) => {
-        setFiles((prev) => prev.filter((_, i) => i !== index));
-    };
+    const removeFile = (idx: number) => setFiles((prev) => prev.filter((_, i) => i !== idx));
 
     const handleUpload = async () => {
         if (files.length === 0) return;
         try {
             await onUpload(files);
-        } catch (e: any) {
-            console.error(e);
-            setError(e.message || "Upload failed");
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : "Upload failed";
+            setError(message);
         }
     };
 
-    if (status === "success") {
-        return (
-            <Card className="border-green-500/50 bg-green-50/10 h-full">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-green-600">
-                        <CheckCircle className="h-6 w-6" />
-                        Medical Analysis Complete
-                    </CardTitle>
-                    <CardDescription>
-                        Medical documents have been analyzed and risk assessment generated.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="space-y-2">
-                        {files.map((file, i) => (
-                            <div key={i} className="flex items-center gap-3 p-2 border rounded-md bg-background/50">
-                                <FileText className="h-4 w-4 text-primary/50" />
-                                <span className="text-sm truncate flex-1">{file.name}</span>
-                            </div>
-                        ))}
-                    </div>
-                </CardContent>
-                <CardFooter>
-                    {onReset && (
-                        <Button variant="outline" size="sm" onClick={() => {
-                            setFiles([]);
-                            onReset();
-                        }}>
-                            Analyze New Documents
-                        </Button>
-                    )}
-                </CardFooter>
-            </Card>
-        );
-    }
+    const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
 
     return (
-        <Card className={cn("h-full flex flex-col", !isEnabled && "opacity-50 grayscale")}>
-            <CardHeader>
-                <CardTitle>Medical Documents</CardTitle>
-                <CardDescription>
-                    Upload additional medical reports (lab results, history) for deeper analysis.
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="flex-1 space-y-4">
-                <div
-                    {...getRootProps()}
-                    className={cn(
-                        "border-2 border-dashed rounded-lg p-6 text-center transition-colors flex flex-col items-center justify-center min-h-[120px]",
-                        isDragActive ? "border-primary bg-accent" : "border-border",
-                        !isEnabled ? "cursor-not-allowed" : "cursor-pointer hover:bg-accent/50",
-                        (isLoading) && "pointer-events-none"
-                    )}
-                >
-                    <input {...getInputProps()} />
-                    <Upload className="h-8 w-8 mb-2 text-muted-foreground" />
-                    <p className="font-medium text-sm">Upload Medical PDFs</p>
-                    <p className="text-xs text-muted-foreground">Multiple files allowed</p>
+        <section
+            className={cn(
+                "flex h-full flex-col rounded-md border bg-card transition",
+                !isEnabled ? "border-dashed border-border opacity-70" : "border-border"
+            )}
+        >
+            <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+                <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Step 2
+                    </p>
+                    <h3 className="mt-0.5 text-[15px] font-semibold text-foreground">
+                        Medical Documents
+                    </h3>
+                    <p className="text-[12px] text-muted-foreground">
+                        Lab results, MMR, and clinical notes — multiple PDFs allowed.
+                    </p>
                 </div>
+                {!isEnabled ? (
+                    <span className="status-pill" data-tone="muted">
+                        <Lock className="h-3 w-3" /> Awaiting SPAJ
+                    </span>
+                ) : status === "success" ? (
+                    <span className="status-pill" data-tone="verified">
+                        <CheckCircle2 className="h-3 w-3" /> Analyzed
+                    </span>
+                ) : isLoading ? (
+                    <span className="status-pill" data-tone="pending">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Analyzing
+                    </span>
+                ) : status === "error" ? (
+                    <span className="status-pill" data-tone="alert">
+                        <AlertCircle className="h-3 w-3" /> Failed
+                    </span>
+                ) : (
+                    <span className="status-pill" data-tone="muted">Ready</span>
+                )}
+            </header>
 
-                {files.length > 0 && (
-                    <div className="space-y-2 max-h-[150px] overflow-y-auto pr-1">
-                        {files.map((file, index) => (
-                            <div key={index} className="flex items-center justify-between p-2 rounded-md bg-accent/20 border text-sm">
-                                <div className="flex items-center gap-2 truncate">
-                                    <FileText className="h-4 w-4 text-primary" />
-                                    <span className="truncate max-w-[180px]">{file.name}</span>
-                                </div>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                                    onClick={() => removeFile(index)}
-                                    disabled={isLoading}
-                                >
-                                    <X className="h-4 w-4" />
-                                </Button>
+            <div className="flex flex-1 flex-col gap-3 p-5">
+                {status === "success" ? (
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-3 rounded-md border border-[hsl(var(--verified))]/35 bg-[hsl(var(--verified))]/5 p-3">
+                            <div className="grid h-9 w-9 place-items-center rounded-md bg-[hsl(var(--verified))]/15">
+                                <CheckCircle2 className="h-4 w-4 text-[hsl(var(--verified))]" />
                             </div>
-                        ))}
+                            <div className="min-w-0 flex-1">
+                                <p className="text-[13px] font-medium text-foreground">
+                                    {files.length} document{files.length === 1 ? "" : "s"} analyzed
+                                </p>
+                                <p className="text-[11px] text-muted-foreground">
+                                    Risk assessment and synthesized insights ready
+                                </p>
+                            </div>
+                        </div>
+                        {files.length > 0 && (
+                            <ul className="max-h-[140px] space-y-1 overflow-y-auto pr-1 scrollbar-slim">
+                                {files.map((f, i) => (
+                                    <li
+                                        key={i}
+                                        className="flex items-center gap-2 rounded-sm bg-background/60 px-2 py-1.5 text-[12px]"
+                                    >
+                                        <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                                        <span className="truncate flex-1">{f.name}</span>
+                                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                                            {formatSize(f.size)}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </div>
+                ) : (
+                    <>
+                        <div
+                            {...getRootProps()}
+                            className={cn(
+                                "flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed py-7 text-center transition",
+                                isDragActive
+                                    ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/5"
+                                    : "border-border bg-background/50 hover:border-[hsl(var(--primary))]/40 hover:bg-accent/40",
+                                (!isEnabled || isLoading) && "pointer-events-none opacity-60"
+                            )}
+                        >
+                            <input {...getInputProps()} />
+                            <UploadCloud className="h-7 w-7 text-muted-foreground" />
+                            <p className="mt-1.5 text-[13px] font-semibold text-foreground">
+                                Drop medical PDFs
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                                or click to browse — multiple PDFs supported
+                            </p>
+                        </div>
+
+                        {files.length > 0 && (
+                            <ul className="max-h-[140px] space-y-1 overflow-y-auto pr-1 scrollbar-slim">
+                                {files.map((f, i) => (
+                                    <li
+                                        key={i}
+                                        className="flex items-center gap-2 rounded-md border border-border bg-background/50 px-2.5 py-1.5 text-[12px]"
+                                    >
+                                        <FileText className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
+                                        <span className="truncate flex-1">{f.name}</span>
+                                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                                            {formatSize(f.size)}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => removeFile(i)}
+                                            className="grid h-5 w-5 place-items-center rounded text-muted-foreground hover:bg-[hsl(var(--destructive))]/10 hover:text-[hsl(var(--destructive))]"
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </>
                 )}
 
-                {error && (
-                    <div className="flex items-center gap-2 text-destructive text-sm p-2 bg-destructive/10 rounded-md">
-                        <AlertCircle className="h-4 w-4" />
-                        <span>{error}</span>
+                {(error || statusMessage) && status !== "success" && (
+                    <div className="flex items-start gap-2 rounded-md border border-[hsl(var(--destructive))]/30 bg-[hsl(var(--destructive))]/5 p-2.5 text-[12px] text-[hsl(var(--destructive))]">
+                        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span className="flex-1">{error || statusMessage}</span>
                     </div>
                 )}
-            </CardContent>
-            <CardFooter>
-                <Button
-                    className="w-full"
-                    onClick={handleUpload}
-                    disabled={files.length === 0 || isLoading || !isEnabled}
-                >
-                    {isLoading ? (
-                        <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Analyzing...
-                        </>
-                    ) : (
-                        "Analyze Documents"
-                    )}
-                </Button>
-            </CardFooter>
-        </Card>
+            </div>
+
+            <footer className="flex items-center justify-between gap-2 border-t border-border bg-background/50 px-5 py-3">
+                {status === "success" ? (
+                    <>
+                        <p className="text-[11px] text-muted-foreground tabular-nums">
+                            {files.length} file{files.length === 1 ? "" : "s"} · {formatSize(totalBytes)}
+                        </p>
+                        {onReset && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                    setFiles([]);
+                                    onReset();
+                                }}
+                            >
+                                <Plus className="mr-1.5 h-3.5 w-3.5" /> Add more docs
+                            </Button>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        <p className="text-[11px] text-muted-foreground tabular-nums">
+                            {files.length === 0
+                                ? "No files queued"
+                                : `${files.length} file${files.length === 1 ? "" : "s"} · ${formatSize(totalBytes)}`}
+                        </p>
+                        <Button
+                            size="sm"
+                            onClick={handleUpload}
+                            disabled={files.length === 0 || isLoading || !isEnabled}
+                        >
+                            {isLoading ? (
+                                <>
+                                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                    Analyzing…
+                                </>
+                            ) : (
+                                "Analyze documents"
+                            )}
+                        </Button>
+                    </>
+                )}
+            </footer>
+        </section>
     );
 }

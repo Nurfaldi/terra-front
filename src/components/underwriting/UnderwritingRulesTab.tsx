@@ -1,123 +1,193 @@
-import type { SPAJData, MedicalAnalysisResult } from "@/types/underwriting";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { CheckCircle, XCircle, AlertTriangle } from "lucide-react";
+import type { MedicalAnalysisResult, SPAJExtractionResult } from "@/types/underwriting";
+import { DataField, DataSection } from "./DataField";
+import { StatusPill } from "./StatCard";
+import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface UnderwritingRulesTabProps {
-    spajData: SPAJData | null;
+    spajData: SPAJExtractionResult | null;
     medicalData: MedicalAnalysisResult | null;
 }
+
+type RuleStatus = "pass" | "warning" | "fail";
+
+interface Rule {
+    label: string;
+    value: string;
+    status: RuleStatus;
+    detail?: string;
+}
+
+const idr = (n: number) =>
+    n.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
 
 export function UnderwritingRulesTab({ spajData, medicalData }: UnderwritingRulesTabProps) {
     if (!spajData) return null;
 
-    const decision = medicalData?.underwriting_decision?.decision || "Pending Analysis";
-    const decisionColor =
-        decision === "Standard" ? "bg-green-500" :
-            decision === "Sub-standard" ? "bg-yellow-500" :
-                decision === "Declined" ? "bg-red-500" : "bg-gray-500";
-    const age = spajData.personal_data.usia ?? 0;
-    const bmi = spajData.health_data.bmi ?? 0;
-    const occupationRisk = spajData.personal_data.tingkat_risiko_pekerjaan ?? 0;
-    const hasDiseaseHistory =
-        spajData.health_data.mengalami_penyakit ??
-        Boolean(spajData.health_data.riwayat_penyakit?.length);
-    const creditAmount = spajData.insurance_data.jumlah_kredit ?? 0;
+    const decision = medicalData?.underwriting_decision?.decision || "Pending";
+    const loading = medicalData?.underwriting_decision?.loading_percentage;
+
+    const age = spajData.personal_data?.usia ?? 0;
+    const bmi = spajData.health_data?.bmi ?? 0;
+    const occRisk = spajData.personal_data?.tingkat_risiko_pekerjaan ?? 0;
+    const hasDisease =
+        spajData.health_data?.mengalami_penyakit ??
+        Boolean(spajData.health_data?.riwayat_penyakit?.length);
+    const credit = spajData.insurance_data?.jumlah_kredit ?? 0;
     const annualIncome = spajData.inference?.penghasilan_numerik ?? 0;
-    const incomeFactor =
-        annualIncome > 0 ? `${(creditAmount / annualIncome).toFixed(1)}x` : "N/A";
+    const incomeFactor = annualIncome > 0 ? credit / annualIncome : 0;
+
+    const rules: Rule[] = [
+        {
+            label: "Age Eligibility",
+            value: `${age} years`,
+            status: age > 0 && age < 65 ? "pass" : "fail",
+            detail: "Standard cap is age < 65",
+        },
+        {
+            label: "BMI Range",
+            value: bmi ? bmi.toFixed(1) : "—",
+            status: bmi >= 18.5 && bmi <= 25 ? "pass" : bmi > 0 ? "warning" : "fail",
+            detail: "Healthy: 18.5 – 25.0",
+        },
+        {
+            label: "Occupation Risk",
+            value: occRisk ? `Class ${occRisk}` : "—",
+            status: occRisk <= 2 ? "pass" : occRisk <= 3 ? "warning" : "fail",
+            detail: "Low risk: ≤ Class 2",
+        },
+        {
+            label: "Medical History",
+            value: hasDisease ? "Reported" : "Clean",
+            status: !hasDisease ? "pass" : "warning",
+            detail: hasDisease ? "Manual review required" : "No disease history",
+        },
+    ];
+
+    const verdictTone =
+        decision === "Standard" || decision === "Approve"
+            ? "verified"
+            : decision === "Sub-standard" || decision === "Approve with Loading"
+            ? "pending"
+            : decision === "Decline" || decision === "Declined" || decision === "Reject"
+            ? "alert"
+            : "muted";
+
+    const VerdictIcon =
+        verdictTone === "verified"
+            ? CheckCircle2
+            : verdictTone === "alert"
+            ? XCircle
+            : verdictTone === "pending"
+            ? AlertTriangle
+            : AlertTriangle;
 
     return (
-        <div className="space-y-6">
-            {/* Verdict Banner */}
-            <div className={cn("p-4 rounded-lg text-white shadow-md flex items-center justify-between", decisionColor)}>
-                <div>
-                    <h3 className="text-lg font-bold">Underwriting Decision: {decision}</h3>
-                    {medicalData?.underwriting_decision?.loading_percentage ? (
-                        <p className="opacity-90">Loading: {medicalData.underwriting_decision.loading_percentage}%</p>
-                    ) : null}
+        <div className="space-y-4">
+            <section
+                className={cn(
+                    "flex items-center justify-between gap-4 rounded-md border bg-card px-5 py-4",
+                    verdictTone === "verified" && "border-[hsl(var(--verified))]/40 bg-[hsl(var(--verified))]/5",
+                    verdictTone === "pending" && "border-[hsl(var(--pending))]/45 bg-[hsl(var(--pending))]/5",
+                    verdictTone === "alert" && "border-[hsl(var(--destructive))]/40 bg-[hsl(var(--destructive))]/5"
+                )}
+            >
+                <div className="flex items-center gap-3">
+                    <div
+                        className={cn(
+                            "grid h-10 w-10 place-items-center rounded-md",
+                            verdictTone === "verified" && "bg-[hsl(var(--verified))]/15 text-[hsl(var(--verified))]",
+                            verdictTone === "pending" && "bg-[hsl(var(--pending))]/15 text-[hsl(38_92%_28%)]",
+                            verdictTone === "alert" && "bg-[hsl(var(--destructive))]/15 text-[hsl(var(--destructive))]",
+                            verdictTone === "muted" && "bg-muted text-muted-foreground"
+                        )}
+                    >
+                        <VerdictIcon className="h-5 w-5" />
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                            Underwriting Decision
+                        </p>
+                        <h3 className="text-[16px] font-semibold text-foreground">
+                            {decision}
+                            {typeof loading === "number" && loading > 0 ? (
+                                <span className="ml-2 text-muted-foreground font-normal">
+                                    +{loading}% loading
+                                </span>
+                            ) : null}
+                        </h3>
+                    </div>
                 </div>
-                {decision === "Standard" && <CheckCircle className="h-8 w-8" />}
-                {(decision === "Sub-standard" || decision === "Postponed") && <AlertTriangle className="h-8 w-8" />}
-                {decision === "Declined" && <XCircle className="h-8 w-8" />}
-            </div>
+                <p className="hidden max-w-md text-[12px] text-muted-foreground md:block">
+                    {medicalData?.underwriting_decision?.justification ||
+                        "Awaiting medical analysis to finalize verdict."}
+                </p>
+            </section>
 
-            <div className="grid gap-6 md:grid-cols-2">
-                {/* Rule Checks */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Automated Rule Checks</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            <RuleItem
-                                label="Age Eligibility"
-                                status={age < 65 ? "pass" : "fail"}
-                                value={`${age} years`}
-                            />
-                            <RuleItem
-                                label="BMI Range"
-                                status={bmi >= 18.5 && bmi <= 25 ? "pass" : "warning"}
-                                value={bmi.toString()}
-                            />
-                            <RuleItem
-                                label="Occupation Risk"
-                                status={occupationRisk <= 2 ? "pass" : occupationRisk <= 3 ? "warning" : "fail"}
-                                value={`Class ${occupationRisk}`}
-                            />
-                            <RuleItem
-                                label="Medical History"
-                                status={!hasDiseaseHistory ? "pass" : "warning"}
-                                value={hasDiseaseHistory ? "Present" : "Clean"}
-                            />
-                        </div>
-                    </CardContent>
-                </Card>
+            <div className="grid gap-4 lg:grid-cols-2">
+                <DataSection title="Automated Rule Checks" eyebrow="SPAJ-derived">
+                    <ul className="divide-y divide-border">
+                        {rules.map((rule) => (
+                            <li
+                                key={rule.label}
+                                className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                            >
+                                <div className="min-w-0">
+                                    <p className="text-[13px] font-medium text-foreground">
+                                        {rule.label}
+                                    </p>
+                                    {rule.detail && (
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {rule.detail}
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                    <span className="font-mono text-[12px] tabular-nums text-muted-foreground">
+                                        {rule.value}
+                                    </span>
+                                    {rule.status === "pass" && (
+                                        <StatusPill tone="verified">Pass</StatusPill>
+                                    )}
+                                    {rule.status === "warning" && (
+                                        <StatusPill tone="pending">Review</StatusPill>
+                                    )}
+                                    {rule.status === "fail" && (
+                                        <StatusPill tone="alert">Fail</StatusPill>
+                                    )}
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                </DataSection>
 
-                {/* Financial Factors */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Financial Underwriting</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center border-b pb-2">
-                                <span className="text-sm font-medium">Total Sum Assured</span>
-                                <span className="font-mono">{creditAmount.toLocaleString("id-ID", { style: "currency", currency: "IDR" })}</span>
-                            </div>
-                            <div className="flex justify-between items-center border-b pb-2">
-                                <span className="text-sm font-medium">Annual Income</span>
-                                <span className="font-mono">{spajData.personal_data.penghasilan_per_tahun}</span>
-                            </div>
-                            <div className="flex justify-between items-center border-b pb-2">
-                                <span className="text-sm font-medium">Income Factor</span>
-                                <span className="font-mono">{incomeFactor}</span>
-                            </div>
-                            <div className="mt-4 p-3 bg-muted rounded-md text-sm">
-                                <p className="font-semibold mb-1">Financial Assessment:</p>
-                                <p className="text-muted-foreground">
-                                    Sum assured is within acceptable limits based on stated income ({incomeFactor} income).
-                                </p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
+                <DataSection title="Financial Underwriting" eyebrow="Sum-assured ratios">
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                        <DataField label="Total Sum Assured" value={idr(credit)} mono />
+                        <DataField
+                            label="Annual Income"
+                            value={annualIncome > 0 ? idr(annualIncome) : spajData.personal_data?.penghasilan_per_tahun}
+                            mono
+                        />
+                        <DataField
+                            label="Income Factor"
+                            value={incomeFactor > 0 ? `${incomeFactor.toFixed(1)}×` : "N/A"}
+                            mono
+                        />
+                        <DataField
+                            label="Risk Level"
+                            value={medicalData?.risk_assessment?.risk_level || "Pending"}
+                        />
+                    </div>
+                    <p className="mt-4 rounded-md bg-muted/50 px-3 py-2 text-[12px] text-muted-foreground">
+                        {incomeFactor > 5
+                            ? `Sum assured is ${incomeFactor.toFixed(1)}× annual income — escalate to financial UW.`
+                            : incomeFactor > 0
+                            ? `Sum assured is ${incomeFactor.toFixed(1)}× annual income — within acceptable range.`
+                            : "Income data unavailable; financial assessment cannot be auto-evaluated."}
+                    </p>
+                </DataSection>
             </div>
         </div>
     );
-}
-
-function RuleItem({ label, status, value }: { label: string, status: "pass" | "warning" | "fail", value: string }) {
-    return (
-        <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">{label}</span>
-            <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">{value}</span>
-                {status === "pass" && <Badge variant="default" className="bg-green-500 hover:bg-green-600">Pass</Badge>}
-                {status === "warning" && <Badge variant="secondary" className="bg-yellow-500 text-white hover:bg-yellow-600">Review</Badge>}
-                {status === "fail" && <Badge variant="destructive">Fail</Badge>}
-            </div>
-        </div>
-    )
 }

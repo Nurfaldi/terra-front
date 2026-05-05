@@ -64,19 +64,19 @@ export default function FlowSelectorPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200 bg-white shadow-sm opacity-50">
+          <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader>
               <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
                 <ShieldCheck className="h-5 w-5 text-blue-600" />
               </div>
-              <CardTitle className="text-xl text-slate-800">Underwriting Flow</CardTitle>
+              <CardTitle className="text-xl text-slate-800">Health Underwriting</CardTitle>
               <CardDescription className="text-slate-500">
-                Existing underwriting V2 pipeline for SPAJ and medical analysis.
+                SPAJ extraction → medical analysis → bordereaux generation.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button disabled variant="outline" className="w-full border-slate-200">
-                Open Underwriting
+              <Button asChild className="w-full bg-blue-600 hover:bg-blue-700">
+                <Link to="/underwriting">Open Underwriting</Link>
               </Button>
             </CardContent>
           </Card>
