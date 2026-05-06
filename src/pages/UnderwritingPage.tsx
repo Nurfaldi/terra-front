@@ -1,5 +1,7 @@
-import { useAuth } from "@/context/AuthContext";
-import { useUnderwriting } from "@/hooks/useUnderwriting";
+import { useMemo, useState } from "react";
+import { AppShell } from "@/components/layout/AppShell";
+import { Stepper, type Step } from "@/components/underwriting/Stepper";
+import { StatCard, StatusPill } from "@/components/underwriting/StatCard";
 import { SPAJUploadCard } from "@/components/underwriting/SPAJUploadCard";
 import { MedicalUploadCard } from "@/components/underwriting/MedicalUploadCard";
 import { FormDataTab } from "@/components/underwriting/FormDataTab";
@@ -10,59 +12,26 @@ import { MedicalAnalysisTab } from "@/components/underwriting/MedicalAnalysisTab
 import { BordereauxTab } from "@/components/underwriting/BordereauxTab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { RefreshCcw, Activity, LogOut, Globe, LayoutGrid } from "lucide-react";
+import { useUnderwriting } from "@/hooks/useUnderwriting";
+import {
+    Activity,
+    CheckCircle2,
+    FileSpreadsheet,
+    FileText,
+    Gauge,
+    RefreshCcw,
+    Stethoscope,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useNavigate } from "react-router-dom";
 
-// Stats Card Component - from arabic_claims theme
-function StatsCard({
-    title,
-    value,
-    subtitle,
-    variant = "default"
-}: {
-    title: string;
-    value: string | number;
-    subtitle: string;
-    variant?: "default" | "amber" | "blue" | "emerald" | "red";
-}) {
-    const variantClasses = {
-        default: "bg-white border",
-        amber: "bg-amber-50 border-amber-200",
-        blue: "bg-blue-50 border-blue-200",
-        emerald: "bg-emerald-50 border-emerald-200",
-        red: "bg-red-50 border-red-200",
-    };
-
-    const textClasses = {
-        default: { label: "text-slate-500", value: "text-slate-800", subtitle: "text-slate-500" },
-        amber: { label: "text-amber-600", value: "text-amber-700", subtitle: "text-amber-600" },
-        blue: { label: "text-blue-600", value: "text-blue-700", subtitle: "text-blue-600" },
-        emerald: { label: "text-emerald-600", value: "text-emerald-700", subtitle: "text-emerald-600" },
-        red: { label: "text-red-600", value: "text-red-700", subtitle: "text-red-600" },
-    };
-
-    const styles = textClasses[variant];
-
-    return (
-        <Card className={variantClasses[variant]}>
-            <CardContent className="p-4">
-                <p className={cn("text-xs uppercase tracking-wider font-medium", styles.label)}>{title}</p>
-                <p className={cn("text-3xl font-bold mt-1", styles.value)}>{value}</p>
-                <p className={cn("text-sm", styles.subtitle)}>{subtitle}</p>
-            </CardContent>
-        </Card>
-    );
-}
+type StageId = "spaj" | "medical" | "bordereaux";
 
 export default function UnderwritingPage() {
-    const { logout } = useAuth();
-    const navigate = useNavigate();
     const {
         spajResult,
         medicalResult,
         bordereauxId,
+        bordereauxData,
         uploadSPAJ,
         isUploadingSPAJ,
         spajJobStatus,
@@ -73,228 +42,377 @@ export default function UnderwritingPage() {
         medicalJobError,
         generateBordereaux,
         isGeneratingBordereaux,
+        downloadBordereaux,
         reset,
+        resetMedical,
     } = useUnderwriting();
 
-    const handleSPAJReset = () => {
-        if (confirm("Resetting will clear all current progress. Continue?")) {
-            reset();
-        }
+    const [stage, setStage] = useState<StageId>("spaj");
+
+    const spajRunning = isUploadingSPAJ || spajJobStatus === "running" || spajJobStatus === "queued";
+    const medicalRunning =
+        isUploadingMedical || medicalJobStatus === "running" || medicalJobStatus === "queued";
+
+    const verdict =
+        medicalResult?.synthesized_insights?.final_verdict?.decision ||
+        medicalResult?.underwriting_decision?.decision ||
+        "Pending";
+    const verdictLoading =
+        medicalResult?.synthesized_insights?.final_verdict?.loading_percentage ??
+        medicalResult?.underwriting_decision?.loading_percentage;
+
+    const verdictTone =
+        verdict === "Approve" || verdict === "Standard"
+            ? "verified"
+            : verdict === "Approve with Loading" || verdict === "Sub-standard"
+            ? "pending"
+            : verdict === "Reject" || verdict === "Decline" || verdict === "Declined"
+            ? "alert"
+            : verdict === "Postpone"
+            ? "primary"
+            : "default";
+
+    const steps: Step[] = useMemo(
+        () => [
+            {
+                id: "spaj",
+                label: "SPAJ Upload",
+                description: spajResult ? "Extracted" : spajRunning ? "Processing" : "Pending",
+                state: spajResult ? "complete" : "active",
+            },
+            {
+                id: "medical",
+                label: "Medical Analysis",
+                description: medicalResult
+                    ? "Analyzed"
+                    : medicalRunning
+                    ? "Processing"
+                    : spajResult
+                    ? "Ready"
+                    : "Locked",
+                state: medicalResult ? "complete" : spajResult ? "active" : "pending",
+            },
+            {
+                id: "bordereaux",
+                label: "Generate Bordereaux",
+                description: bordereauxId ? "Ready" : medicalResult ? "Ready" : "Locked",
+                state: bordereauxId ? "complete" : medicalResult ? "active" : "pending",
+            },
+        ],
+        [spajResult, spajRunning, medicalResult, medicalRunning, bordereauxId]
+    );
+
+    const onStepClick = (id: string) => {
+        if (id === "spaj") setStage("spaj");
+        if (id === "medical" && spajResult) setStage("medical");
+        if (id === "bordereaux" && medicalResult) setStage("bordereaux");
     };
 
-    // Calculate stats
-    const stats = {
-        step: spajResult ? (medicalResult ? 2 : 1) : 0,
-        spajStatus: spajResult ? "Completed" : (isUploadingSPAJ || spajJobStatus === "running" ? "Processing" : "Pending"),
-        medicalStatus: medicalResult ? "Completed" : (isUploadingMedical || medicalJobStatus === "running" ? "Processing" : (spajResult ? "Ready" : "Waiting")),
-        verdict: medicalResult?.synthesized_insights?.final_verdict?.decision || medicalResult?.underwriting_decision?.decision || "Pending"
+    const handleResetAll = () => {
+        if (confirm("Reset all extraction and analysis state?")) reset();
     };
-
-    const currentDateTime = new Date().toLocaleString('en-US', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-    });
 
     return (
-        <div className="min-h-screen bg-slate-50">
-            {/* Auto-hide Left Sidebar */}
-            <div className="fixed left-0 top-0 h-full z-40 group">
-                <div className="absolute left-0 top-0 h-full w-4 z-10" />
-                <div className="absolute left-0 top-0 h-full w-16 bg-white border-r border-slate-200 shadow-sm
-                              transform -translate-x-12 group-hover:translate-x-0 transition-transform duration-200 ease-in-out
-                              flex flex-col items-center py-4 gap-2">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-10 w-10 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
-                        onClick={() => navigate("/flows")}
-                        title="Back to Flows"
-                    >
-                        <LayoutGrid className="h-5 w-5" />
-                    </Button>
-                    <div className="w-8 h-px bg-slate-200 my-1" />
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-10 w-10 text-blue-600 bg-blue-50"
-                        title="Health Underwriting (current)"
-                    >
-                        <Activity className="h-5 w-5" />
-                    </Button>
-                </div>
-            </div>
+        <AppShell
+            eyebrow="Underwriting Workspace"
+            title="Health Underwriting Pipeline"
+            subtitle="SPAJ extraction → Medical analysis → Bordereaux"
+            actions={
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetAll}
+                    disabled={!spajResult && !medicalResult && !bordereauxId}
+                >
+                    <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
+                    Reset
+                </Button>
+            }
+        >
+            <div className="space-y-5">
+                <Stepper steps={steps} onStepClick={onStepClick} />
 
-            {/* Header */}
-            <header className="bg-white border-b shadow-sm sticky top-0 z-50">
-                <div className="px-6 py-3">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <img
-                                src="/olvo-logo.png"
-                                alt="Olvo"
-                                className="h-10 object-contain cursor-pointer hover:opacity-80 transition-opacity"
-                                onClick={() => navigate("/flows")}
-                            />
-                            <div>
-                                <h1 className="text-lg font-bold text-slate-800">Health Underwriting Pipeline</h1>
-                                <p className="text-xs text-slate-500">AI-Powered Insurance Underwriting</p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                            <span className="text-sm text-slate-500">
-                                Last updated <span className="font-semibold text-slate-700">{currentDateTime}</span>
-                            </span>
-                            <Button variant="outline" size="sm" className="gap-2">
-                                <Globe className="h-4 w-4" />
-                                ENGLISH
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="gap-2 text-slate-600"
-                                onClick={() => {
-                                    logout();
-                                    navigate("/login", { replace: true });
-                                }}
-                            >
-                                <LogOut className="h-4 w-4" />
-                                LOGOUT
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            </header>
-
-            {/* Sub Header */}
-            <div className="bg-white border-b px-6 py-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <p className="text-xs text-blue-600 font-semibold uppercase tracking-wider">UNDERWRITING WORKSPACE</p>
-                        <h2 className="text-xl font-bold text-slate-800">Health Insurance Underwriting</h2>
-                        <p className="text-sm text-slate-500">Two-step pipeline: SPAJ extraction → Medical analysis</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" className="gap-2" onClick={handleSPAJReset}>
-                            <RefreshCcw className="h-4 w-4" />
-                            Reset Pipeline
-                        </Button>
-                    </div>
-                </div>
-            </div>
-
-            {/* Stats Cards */}
-            <div className="px-6 py-4">
-                <div className="grid grid-cols-4 gap-4">
-                    <StatsCard
-                        title="STEP"
-                        value={stats.step === 2 ? "Complete" : `Step ${stats.step + 1}`}
-                        subtitle={stats.step === 2 ? "Pipeline finished" : "In progress"}
-                    />
-                    <StatsCard
-                        title="SPAJ STATUS"
-                        value={stats.spajStatus}
-                        subtitle={spajResult ? "Data extracted" : "Awaiting upload"}
-                        variant={spajResult ? "emerald" : "default"}
-                    />
-                    <StatsCard
-                        title="MEDICAL STATUS"
-                        value={stats.medicalStatus}
-                        subtitle={medicalResult ? "Analysis complete" : "Awaiting SPAJ"}
-                        variant={medicalResult ? "emerald" : (spajResult ? "amber" : "default")}
-                    />
-                    <StatsCard
-                        title="VERDICT"
-                        value={stats.verdict}
-                        subtitle={medicalResult ? "Final decision" : "Pending analysis"}
-                        variant={
-                            stats.verdict === "Approve" || stats.verdict === "Standard" ? "emerald" :
-                            stats.verdict === "Approve with Loading" || stats.verdict === "Sub-standard" ? "amber" :
-                            stats.verdict === "Reject" || stats.verdict === "Decline" ? "red" : "default"
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <StatCard
+                        label="Stage"
+                        value={
+                            bordereauxId ? "Bordereaux" : medicalResult ? "Bordereaux" : spajResult ? "Medical" : "SPAJ"
                         }
+                        sub={`Step ${steps.filter((s) => s.state === "complete").length} of 3 complete`}
+                        icon={Gauge}
+                    />
+                    <StatCard
+                        label="SPAJ Status"
+                        value={spajResult ? "Extracted" : spajRunning ? "Processing" : "Pending"}
+                        sub={
+                            spajResult
+                                ? spajResult.personal_data?.nama_lengkap || "Applicant data ready"
+                                : "Awaiting upload"
+                        }
+                        tone={spajResult ? "verified" : spajRunning ? "pending" : "default"}
+                        icon={FileText}
+                    />
+                    <StatCard
+                        label="Medical"
+                        value={
+                            medicalResult ? "Analyzed" : medicalRunning ? "Processing" : spajResult ? "Ready" : "Locked"
+                        }
+                        sub={
+                            medicalResult
+                                ? `${medicalResult.lab_results?.length ?? 0} lab tests · ${
+                                      medicalResult.risk_assessment?.identified_risks?.length ?? 0
+                                  } risks`
+                                : spajResult
+                                ? "Awaiting medical PDFs"
+                                : "Upload SPAJ first"
+                        }
+                        tone={
+                            medicalResult ? "verified" : medicalRunning ? "pending" : spajResult ? "primary" : "default"
+                        }
+                        icon={Stethoscope}
+                    />
+                    <StatCard
+                        label="Verdict"
+                        value={
+                            verdict === "Approve with Loading" && verdictLoading
+                                ? `Approve +${verdictLoading}%`
+                                : verdict
+                        }
+                        sub={
+                            medicalResult?.synthesized_insights?.final_verdict
+                                ? "RAG-grounded synthesis"
+                                : medicalResult
+                                ? "Preliminary analysis"
+                                : "Pending analysis"
+                        }
+                        tone={verdictTone as "verified" | "pending" | "alert" | "primary" | "default"}
+                        icon={Activity}
                     />
                 </div>
-            </div>
 
-            {/* Main Content */}
-            <div className="px-6 py-4">
-                {/* Upload Section */}
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7 mb-6">
-                    <div className="col-span-3">
-                        <SPAJUploadCard
-                            onUpload={uploadSPAJ}
-                            isLoading={isUploadingSPAJ || spajJobStatus === "running" || spajJobStatus === "queued"}
-                            status={spajResult ? "success" : (spajJobError ? "error" : "idle")}
-                            onReset={spajResult ? handleSPAJReset : undefined}
-                        />
-                        {spajJobError && (
-                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">
-                                {spajJobError}
+                <Tabs value={stage} onValueChange={(v) => setStage(v as StageId)}>
+                    <TabsList className="rounded-md border border-border bg-card p-1">
+                        <TabsTrigger value="spaj" className="data-[state=active]:bg-[hsl(var(--primary))] data-[state=active]:text-[hsl(var(--primary-foreground))]">
+                            <FileText className="mr-1.5 h-3.5 w-3.5" />
+                            1 · SPAJ Upload
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="medical"
+                            disabled={!spajResult}
+                            className="data-[state=active]:bg-[hsl(var(--primary))] data-[state=active]:text-[hsl(var(--primary-foreground))]"
+                        >
+                            <Stethoscope className="mr-1.5 h-3.5 w-3.5" />
+                            2 · Medical Upload
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="bordereaux"
+                            disabled={!medicalResult}
+                            className="data-[state=active]:bg-[hsl(var(--primary))] data-[state=active]:text-[hsl(var(--primary-foreground))]"
+                        >
+                            <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+                            3 · Bordereaux
+                        </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="spaj" className="mt-4">
+                        <div className="grid gap-4 lg:grid-cols-3">
+                            <div className="lg:col-span-2">
+                                <SPAJUploadCard
+                                    onUpload={uploadSPAJ}
+                                    isLoading={spajRunning}
+                                    status={spajResult ? "success" : spajJobError ? "error" : "idle"}
+                                    statusMessage={spajJobError}
+                                    onReset={spajResult ? handleResetAll : undefined}
+                                />
                             </div>
-                        )}
-                    </div>
-                    <div className="col-span-4">
-                        <MedicalUploadCard
-                            onUpload={(files) => uploadMedical({ files, spajResult: spajResult! })}
-                            isLoading={isUploadingMedical || medicalJobStatus === "running" || medicalJobStatus === "queued"}
-                            isEnabled={!!spajResult}
-                            status={medicalResult ? "success" : (medicalJobError ? "error" : "idle")}
-                            onReset={() => { /* Medical specific reset if needed */ }}
-                        />
-                        {medicalJobError && (
-                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-600">
-                                {medicalJobError}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Results Section */}
-                {spajResult && (
-                    <Tabs defaultValue="form-data" className="space-y-4">
-                        <TabsList className="bg-muted/50 p-1">
-                            <TabsTrigger value="form-data">Policy Data</TabsTrigger>
-                            <TabsTrigger value="applicant">Applicant Details</TabsTrigger>
-                            <TabsTrigger value="rules">Rules Check</TabsTrigger>
-                            <TabsTrigger value="lab">Lab Results</TabsTrigger>
-                            <TabsTrigger value="analysis" disabled={!medicalResult}>Medical Analysis</TabsTrigger>
-                            <TabsTrigger value="bordereaux" disabled={!medicalResult}>Bordereaux</TabsTrigger>
-                        </TabsList>
-
-                        <TabsContent value="form-data" className="space-y-4">
-                            <FormDataTab data={spajResult} />
-                        </TabsContent>
-
-                        <TabsContent value="applicant" className="space-y-4">
-                            <ApplicantDetailsTab data={spajResult} />
-                        </TabsContent>
-
-                        <TabsContent value="rules" className="space-y-4">
-                            <UnderwritingRulesTab spajData={spajResult} medicalData={medicalResult} />
-                        </TabsContent>
-
-                        <TabsContent value="lab" className="space-y-4">
-                            <LabResultsTab data={medicalResult} />
-                        </TabsContent>
-
-                        <TabsContent value="analysis" className="space-y-4">
-                            <MedicalAnalysisTab data={medicalResult} />
-                        </TabsContent>
-
-                        <TabsContent value="bordereaux" className="space-y-4">
-                            <BordereauxTab
-                                bordereauxId={bordereauxId}
-                                onGenerate={generateBordereaux}
-                                isGenerating={isGeneratingBordereaux}
+                            <SummaryCard
+                                title="What happens next"
+                                done={!!spajResult}
+                                items={[
+                                    "Extract applicant, insurance, and health fields",
+                                    "Compute BMI, occupation risk, income inference",
+                                    "Unlock medical document analysis",
+                                ]}
                             />
-                        </TabsContent>
-                    </Tabs>
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="medical" className="mt-4">
+                        <div className="grid gap-4 lg:grid-cols-3">
+                            <div className="lg:col-span-2">
+                                <MedicalUploadCard
+                                    onUpload={(files) =>
+                                        uploadMedical({ files, spajResult: spajResult! })
+                                    }
+                                    isLoading={medicalRunning}
+                                    isEnabled={!!spajResult}
+                                    status={
+                                        medicalResult ? "success" : medicalJobError ? "error" : "idle"
+                                    }
+                                    statusMessage={medicalJobError}
+                                    onReset={
+                                        medicalResult
+                                            ? () => {
+                                                  if (confirm("Replace medical analysis?")) {
+                                                      resetMedical();
+                                                  }
+                                              }
+                                            : undefined
+                                    }
+                                />
+                            </div>
+                            <SummaryCard
+                                title="Pipeline"
+                                done={!!medicalResult}
+                                items={[
+                                    "Extract lab results & vitals",
+                                    "Identify risks & mitigating factors",
+                                    "Retrieve UW guideline chunks (RAG)",
+                                    "Synthesize verdict with loading %",
+                                ]}
+                            />
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="bordereaux" className="mt-4">
+                        <BordereauxTab
+                            canGenerate={!!spajResult && !!medicalResult}
+                            bordereauxId={bordereauxId}
+                            bordereauxData={bordereauxData}
+                            isGenerating={isGeneratingBordereaux}
+                            onGenerate={generateBordereaux}
+                            onDownload={downloadBordereaux}
+                        />
+                    </TabsContent>
+                </Tabs>
+
+                {spajResult && (
+                    <section className="space-y-3">
+                        <header className="flex items-center justify-between gap-3">
+                            <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                    Output
+                                </p>
+                                <h2 className="text-[16px] font-semibold text-foreground">
+                                    Underwriting Workbench
+                                </h2>
+                            </div>
+                            {medicalResult ? (
+                                <StatusPill tone="verified">
+                                    <CheckCircle2 className="h-3 w-3" /> Full data available
+                                </StatusPill>
+                            ) : (
+                                <StatusPill tone="pending">SPAJ-only view</StatusPill>
+                            )}
+                        </header>
+
+                        <Tabs defaultValue="form-data">
+                            <TabsList className="flex w-full flex-wrap gap-1 rounded-md border border-border bg-card p-1">
+                                <ResultTab value="form-data">Form Data</ResultTab>
+                                <ResultTab value="rules">Underwriting Rules</ResultTab>
+                                <ResultTab value="applicant">Applicant Details</ResultTab>
+                                <ResultTab value="lab" disabled={!medicalResult}>
+                                    Lab Results
+                                </ResultTab>
+                                <ResultTab value="analysis" disabled={!medicalResult}>
+                                    Medical Analysis
+                                </ResultTab>
+                                <ResultTab value="bordereaux" disabled={!medicalResult}>
+                                    Bordereaux
+                                </ResultTab>
+                            </TabsList>
+
+                            <TabsContent value="form-data" className="mt-4">
+                                <FormDataTab data={spajResult} />
+                            </TabsContent>
+                            <TabsContent value="rules" className="mt-4">
+                                <UnderwritingRulesTab
+                                    spajData={spajResult}
+                                    medicalData={medicalResult}
+                                />
+                            </TabsContent>
+                            <TabsContent value="applicant" className="mt-4">
+                                <ApplicantDetailsTab data={spajResult} />
+                            </TabsContent>
+                            <TabsContent value="lab" className="mt-4">
+                                <LabResultsTab data={medicalResult} />
+                            </TabsContent>
+                            <TabsContent value="analysis" className="mt-4">
+                                <MedicalAnalysisTab data={medicalResult} />
+                            </TabsContent>
+                            <TabsContent value="bordereaux" className="mt-4">
+                                <BordereauxTab
+                                    canGenerate={!!spajResult && !!medicalResult}
+                                    bordereauxId={bordereauxId}
+                                    bordereauxData={bordereauxData}
+                                    isGenerating={isGeneratingBordereaux}
+                                    onGenerate={generateBordereaux}
+                                    onDownload={downloadBordereaux}
+                                />
+                            </TabsContent>
+                        </Tabs>
+                    </section>
                 )}
             </div>
-        </div>
+        </AppShell>
+    );
+}
+
+function ResultTab({
+    value,
+    disabled,
+    children,
+}: {
+    value: string;
+    disabled?: boolean;
+    children: React.ReactNode;
+}) {
+    return (
+        <TabsTrigger
+            value={value}
+            disabled={disabled}
+            className={cn(
+                "rounded-sm px-3 py-1.5 text-[12px] font-medium",
+                "data-[state=active]:bg-[hsl(var(--primary))] data-[state=active]:text-[hsl(var(--primary-foreground))]"
+            )}
+        >
+            {children}
+        </TabsTrigger>
+    );
+}
+
+function SummaryCard({
+    title,
+    items,
+    done,
+}: {
+    title: string;
+    items: string[];
+    done: boolean;
+}) {
+    return (
+        <aside className="flex h-full flex-col rounded-md border border-border bg-card p-5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                {title}
+            </p>
+            <ul className="mt-3 flex-1 space-y-2 text-[12px] text-foreground">
+                {items.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                        <CheckCircle2
+                            className={cn(
+                                "mt-0.5 h-3.5 w-3.5 shrink-0",
+                                done ? "text-[hsl(var(--verified))]" : "text-muted-foreground/50"
+                            )}
+                        />
+                        <span className={cn(!done && "text-muted-foreground")}>{item}</span>
+                    </li>
+                ))}
+            </ul>
+            {done && (
+                <p className="mt-3 rounded-md bg-[hsl(var(--verified))]/5 px-3 py-2 text-[11px] text-[hsl(var(--verified))]">
+                    All checks passed for this stage.
+                </p>
+            )}
+        </aside>
     );
 }
