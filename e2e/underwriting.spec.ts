@@ -3,11 +3,11 @@ import path from "path";
 
 const SPAJ_PATH = path.resolve(
     __dirname,
-    "../../terra-back/data/health-uw-testing-data/SPAJK ARTHA GRAHA CLEAN censored.pdf"
+    "fixtures/SPAJK ARTHA GRAHA CLEAN censored.pdf"
 );
 const MEDICAL_PATH = path.resolve(
     __dirname,
-    "../../terra-back/data/health-uw-testing-data/lab_medical_result_sample.pdf"
+    "fixtures/lab_medical_result_sample.pdf"
 );
 
 test.beforeEach(async ({ page }) => {

@@ -172,7 +172,9 @@ export function useUnderwriting() {
         document.body.appendChild(a);
         a.click();
         a.remove();
-        URL.revokeObjectURL(objectUrl);
+        // Revoke after the browser has dispatched the download — revoking
+        // synchronously cancels the save in some Chromium builds.
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     }, [bordereauxId]);
 
     const reset = useCallback(() => {

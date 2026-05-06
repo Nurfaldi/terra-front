@@ -11,6 +11,7 @@ import {
     X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatSize } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 
 interface MedicalUploadCardProps {
@@ -20,10 +21,6 @@ interface MedicalUploadCardProps {
     status: "idle" | "success" | "error";
     statusMessage?: string | null;
     onReset?: () => void;
-}
-
-function formatSize(bytes: number) {
-    return (bytes / 1024 / 1024).toFixed(2) + " MB";
 }
 
 export function MedicalUploadCard({

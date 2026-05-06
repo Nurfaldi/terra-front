@@ -26,6 +26,7 @@ export function Stepper({ steps, onStepClick }: StepperProps) {
                         <button
                             type="button"
                             disabled={!clickable}
+                            aria-current={step.state === "active" ? "step" : undefined}
                             onClick={() => onStepClick?.(step.id)}
                             className={cn(
                                 "flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition",
