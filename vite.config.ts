@@ -13,9 +13,11 @@ export default defineConfig({
   },
   server: {
     port: 6001,
+    host: true,
+    watch: { usePolling: process.env.VITE_USE_POLLING === "true" },
     proxy: {
       "/api": {
-        target: "http://localhost:6000",
+        target: process.env.TERRA_PROXY_TARGET || "http://localhost:6000",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ""),
       },
